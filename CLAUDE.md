@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-An installable PWA showing live downtown Madison parking-garage vacancy counts,
-for two users on Android. Three pieces, deployed together:
+An installable PWA showing live vacancy counts for downtown Madison's public
+parking garages, for two users on Android. Three pieces, deployed together:
 
 - **`site/`** — the PWA: vanilla JS + ES modules, **no build step**, deployed to
   GitHub Pages as raw static files.
@@ -64,8 +64,9 @@ ordered list of all IDs), reordered by the up/down arrows in a card's left
 corners (`moveCard` swaps neighbors); the end cards' out-of-range arrow is
 disabled. Any garage can be **minimized** (`parking:minimized`, a set of IDs):
 the `−` button collapses its card to a compact one-line row that drops below the
-full cards, and the row itself is a button that restores it. New feed IDs append
-to the order and render full by default.
+full cards, and the row itself is a button that restores it (moving it to the end
+of the order so it lands at the bottom of the full cards). New feed IDs append to
+the order and render full by default.
 
 Tapping a card body toggles its **trend view inline** in place (tap the header
 again to collapse); at most one is expanded (`expandedId`). The view

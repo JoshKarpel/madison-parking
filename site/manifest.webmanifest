@@ -1,7 +1,7 @@
 {
-  "name": "Downtown Madison Parking",
-  "short_name": "Downtown Madison Parking",
-  "description": "Live downtown Madison parking-garage vacancy counts.",
+  "name": "Downtown Madison Public Parking",
+  "short_name": "Madison Parking",
+  "description": "Live vacancy counts for downtown Madison's public parking garages.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

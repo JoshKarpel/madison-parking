@@ -318,10 +318,13 @@ h2 {
   cursor: pointer;
 }
 
+/* Left-centered, between the ▲/▼ reorder arrows, so minimize sits on the same
+   side as the ＋ that restores a minimized row. */
 .minimize {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+  top: 50%;
+  left: 0.5rem;
+  transform: translateY(-50%);
   background: none;
   border: none;
   color: var(--muted);
@@ -476,13 +479,13 @@ footer a {
 
 .chart-ylabel {
   fill: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   text-anchor: end;
 }
 
 .chart-xlabel {
   fill: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   text-anchor: middle;
 }
 

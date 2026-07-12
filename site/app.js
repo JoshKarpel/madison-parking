@@ -380,6 +380,14 @@ function minimizeCard(id) {
 function restoreCard(id) {
   minimizedIds.delete(id);
   saveMinimized();
+  // Send it to the end of the order so it lands at the bottom of the full cards
+  // (minimized rows filter out of the active list, so an end slot is last there).
+  const i = cardOrder.indexOf(id);
+  if (i >= 0) {
+    cardOrder.splice(i, 1);
+    cardOrder.push(id);
+    saveOrder();
+  }
   render(lastData);
 }
 

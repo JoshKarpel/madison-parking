@@ -1,8 +1,9 @@
-# Downtown Madison Parking
+# Downtown Madison Public Parking
 
-A small, installable PWA that shows live downtown Madison parking-garage vacancy
-counts at a glance. Static files on GitHub Pages, fed by a Cloudflare Worker that
-proxies the City of Madison's data (the upstream endpoint sends no CORS headers).
+A small, installable PWA that shows live vacancy counts for downtown Madison's
+public parking garages at a glance. Static files on GitHub Pages, fed by a
+Cloudflare Worker that proxies the City of Madison's data (the upstream endpoint
+sends no CORS headers).
 
 No frameworks, no build step. Vanilla JS + ES modules deployed as raw static files.
 
