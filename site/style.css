@@ -247,14 +247,23 @@ h2 {
   text-align: left;
   font: inherit;
   color: var(--text);
-  cursor: pointer;
   background: var(--surface);
   border-color: var(--border);
 }
 
 .card.minimized .restore-icon {
+  background: none;
+  border: none;
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 0.25rem;
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .card.minimized .name {

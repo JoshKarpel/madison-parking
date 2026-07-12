@@ -79,7 +79,7 @@ ordered list of all IDs), reordered by the up/down arrows in a card's left
 corners (`moveCard` swaps neighbors); the end cards' out-of-range arrow is
 disabled. Any garage can be **minimized** (`parking:minimized`, a set of IDs):
 the `−` button collapses its card to a compact one-line row that drops below the
-full cards, and the row itself is a button that restores it (moving it to the end
+full cards, and the row's `＋` button restores it (moving it to the end
 of the order so it lands at the bottom of the full cards). New feed IDs append to
 the order and render full by default.
 
@@ -157,8 +157,14 @@ rewrites the token to the commit SHA in *every* file that carries it (the
 `grep -rl __BUILD_ID__ site | xargs sed` step in `deploy.yml`), so every deploy
 installs a fresh worker + shell cache. `app.js` reloads once on
 `controllerchange` to apply the update live, and re-checks for a new worker
-(`registration.update()`) when the tab is refocused, throttled to once every 30
-minutes, so a long-open session picks up a deploy without a close/reopen. If you
+(`registration.update()`) both right after registering on `load` (so a cold
+launch proactively catches a deploy) and when the tab is refocused (throttled to
+once every 30 minutes, so a long-open session picks up a deploy without a
+close/reopen). A collapsed **Debug** menu in the footer surfaces the running
+`BUILD_ID`, the storage estimate, and a **reset** button that clears every layer
+of client state (localStorage, IndexedDB, Cache Storage, service-worker
+registrations) then reloads: the escape hatch for a client wedged on a stale
+shell or stale cached data that a fresh (incognito) context wouldn't have. If you
 touch caching, preserve
 this: changing shell assets without changing `sw.js` means clients keep serving
 stale files. The `SHELL` list must include every ES module the app imports

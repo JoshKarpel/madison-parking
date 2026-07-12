@@ -257,18 +257,19 @@ function countText(entry) {
   return entry.count == null ? "—" : String(entry.count);
 }
 
-// A minimized garage: a compact one-line row (the whole row is a button that
-// restores it to a full card). It sits below the full cards, in list order.
+// A minimized garage: a compact one-line row. Only its ＋ button restores it to
+// a full card. It sits below the full cards, in list order.
 function makeMinimizedCard(entry) {
-  const row = document.createElement("button");
-  row.type = "button";
+  const row = document.createElement("div");
   row.className = `card minimized ${bandClassFor(entry)}`.trim();
   row.dataset.id = entry.id;
-  row.setAttribute("aria-label", `Restore ${entry.name}`);
 
-  const icon = document.createElement("span");
-  icon.className = "restore-icon";
-  icon.textContent = "＋";
+  const restore = document.createElement("button");
+  restore.type = "button";
+  restore.className = "restore-icon";
+  restore.textContent = "＋";
+  restore.setAttribute("aria-label", `Restore ${entry.name}`);
+  restore.addEventListener("click", () => restoreCard(entry.id));
 
   const name = document.createElement("span");
   name.className = "name";
@@ -278,8 +279,7 @@ function makeMinimizedCard(entry) {
   count.className = "count";
   count.textContent = countText(entry);
 
-  row.append(icon, name, count);
-  row.addEventListener("click", () => restoreCard(entry.id));
+  row.append(restore, name, count);
   return row;
 }
 
