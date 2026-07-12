@@ -12,6 +12,11 @@ const THRESHOLDS = { green: 150, amber: 50 };
 // which the city's data reports but which isn't in their public garage table).
 const HIDDEN_IDS = new Set(["9"]);
 
+// How often to auto-refresh while the app is open and visible. The city updates
+// every couple of minutes and the Worker edge-caches for 60s, so polling much
+// faster than this just re-serves the same numbers.
+const REFRESH_INTERVAL_MS = 60_000;
+
 const STORAGE_KEYS = {
   data: "parking:data",
   favorites: "parking:favorites",
@@ -20,6 +25,7 @@ const STORAGE_KEYS = {
 const els = {
   modified: document.getElementById("modified"),
   status: document.getElementById("status"),
+  progressBar: document.getElementById("refresh-progress-bar"),
   favorites: document.getElementById("favorites"),
   favoritesEmpty: document.getElementById("favorites-empty"),
   others: document.getElementById("others"),
@@ -212,6 +218,7 @@ async function refresh() {
     setStatus(cached ? "stale" : "no-data");
   } finally {
     refreshing = false;
+    scheduleNextRefresh();
   }
 }
 
@@ -313,9 +320,43 @@ window.addEventListener("touchend", () => {
   els.refreshIndicator.classList.remove("ready");
 });
 
+// --- Auto-refresh while visible ----------------------------------------------
+// A self-rescheduling timer (not setInterval) so any refresh, manual or timed,
+// restarts the countdown, keeping the progress bar in sync with the next fetch.
+let pollTimer = null;
+
+function restartProgressBar() {
+  const bar = els.progressBar;
+  bar.style.transition = "none";
+  bar.style.width = "0%";
+  void bar.offsetWidth; // reflow so the next transition animates from 0
+  bar.style.transition = `width ${REFRESH_INTERVAL_MS}ms linear`;
+  bar.style.width = "100%";
+}
+
+function stopProgressBar() {
+  els.progressBar.style.transition = "none";
+  els.progressBar.style.width = "0%";
+}
+
+function scheduleNextRefresh() {
+  clearTimeout(pollTimer);
+  pollTimer = null;
+  if (document.visibilityState !== "visible") return;
+  restartProgressBar();
+  pollTimer = setTimeout(refresh, REFRESH_INTERVAL_MS);
+}
+
+function stopPolling() {
+  clearTimeout(pollTimer);
+  pollTimer = null;
+  stopProgressBar();
+}
+
 // --- Lifecycle ---------------------------------------------------------------
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") refresh();
+  else stopPolling();
 });
 
 if ("serviceWorker" in navigator) {
