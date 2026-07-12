@@ -547,6 +547,7 @@ async function refresh() {
     render(data);
     setStatus("live");
     refreshHistory();
+    loadStats(shownGarageIds());
   } catch {
     const cached = loadCachedData();
     setStatus(cached ? "stale" : "no-data");
@@ -664,16 +665,27 @@ function stopPolling() {
 // --- Baseline stats ----------------------------------------------------------
 // Load each shown garage's percentile baselines (cached in IndexedDB and at the
 // edge), then re-render so relative colors and comparison labels appear. Best
-// effort: a garage whose stats fail to load just stays uncolored.
+// effort: a garage whose stats fail to load just stays uncolored. Re-run on the
+// refresh cadence (not just once at startup) so a transient fetch failure heals
+// on the next tick instead of needing a reload, and a weekly rebuild is picked
+// up; getStats serves the IndexedDB cache within STATS_TTL_SECONDS, so a warm
+// reload costs no network. Guarded so overlapping refreshes don't stack fetches.
+let statsLoading = false;
 async function loadStats(ids) {
-  const results = await Promise.allSettled(
-    ids.map(async (id) => {
-      const stats = await getStats(historyDb, API_URL, id);
-      statsByGarage.set(id, stats);
-    })
-  );
-  if (results.some((r) => r.status === "fulfilled")) render(lastData);
-  renderStatsStatus();
+  if (statsLoading) return;
+  statsLoading = true;
+  try {
+    const results = await Promise.allSettled(
+      ids.map(async (id) => {
+        const stats = await getStats(historyDb, API_URL, id);
+        statsByGarage.set(id, stats);
+      })
+    );
+    if (results.some((r) => r.status === "fulfilled")) render(lastData);
+    renderStatsStatus();
+  } finally {
+    statsLoading = false;
+  }
 }
 
 // The newest baseline rebuild across all loaded garages. The weekly cron stamps
