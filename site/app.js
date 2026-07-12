@@ -235,6 +235,7 @@ function garageEntries(vacancies) {
         id,
         name: known ? known.name : `Ramp ${id}`,
         address: known ? known.address : undefined,
+        placeCid: known ? known.placeCid : undefined,
         note: known ? known.note : undefined,
         count,
       };
@@ -242,8 +243,9 @@ function garageEntries(vacancies) {
     .sort((a, b) => Number(a.id) - Number(b.id));
 }
 
-function mapsUrl(address) {
-  const query = encodeURIComponent(address);
+function mapsUrl(entry) {
+  if (entry.placeCid) return `https://maps.google.com/?cid=${entry.placeCid}`;
+  const query = encodeURIComponent(entry.address);
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 }
 
@@ -426,7 +428,7 @@ function makeMove(entry, delta, glyph, direction, atEnd) {
 function makeMapLink(entry) {
   const link = document.createElement("a");
   link.className = "maplink";
-  link.href = mapsUrl(entry.address);
+  link.href = mapsUrl(entry);
   link.target = "_blank";
   link.rel = "noopener";
   link.textContent = "🗺️";
