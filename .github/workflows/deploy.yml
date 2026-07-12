@@ -16,7 +16,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+
+      - name: Run tests
+        run: node test/run.mjs
+
   deploy-site:
+    needs: test
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -43,15 +53,22 @@ jobs:
         uses: actions/deploy-pages@v5.0.0
 
   deploy-worker:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.0
 
       # Requires a repo secret CLOUDFLARE_API_TOKEN with the "Edit Cloudflare
-      # Workers" permission. See worker/README.md.
+      # Workers" permission (includes D1). See worker/README.md.
+      #
+      # preCommands applies any new D1 migrations before the deploy. It's
+      # idempotent: wrangler tracks applied migrations in d1_migrations and skips
+      # them, so this is a no-op when the schema is already current. Migrations
+      # here are additive, so running them before the new code is safe.
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           workingDirectory: worker
+          preCommands: npx wrangler d1 migrations apply madison-parking --remote

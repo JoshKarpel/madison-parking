@@ -10,6 +10,7 @@
   --amber-bg: #fef3c7;
   --red: #dc2626;
   --red-bg: #fee2e2;
+  --blue: #2563eb;
   --star: #f59e0b;
 }
 
@@ -26,6 +27,7 @@
     --amber-bg: #78350f;
     --red: #f87171;
     --red-bg: #7f1d1d;
+    --blue: #60a5fa;
     --star: #fbbf24;
   }
 }
@@ -244,27 +246,56 @@ a.name .pin {
   margin: 0.15rem 0;
 }
 
-.card.green .count {
-  color: var(--green);
+/* Relative bands: how the current count compares to this garage's own history
+   for this day-and-hour. Resolution is at the scarce end: packed (event-level,
+   filled red) and much-fuller read warm, typical is a calm blue, and everything
+   comfortably open is one green "plenty" band. Too little history stays
+   uncolored. */
+.card.band-packed .count {
+  color: var(--red);
 }
-.card.amber .count {
+.card.band-full .count {
+  color: var(--red);
+}
+.card.band-busy .count {
   color: var(--amber);
 }
-.card.red .count {
-  color: var(--red);
+.card.band-typical .count {
+  color: var(--blue);
+}
+.card.band-open .count {
+  color: var(--green);
 }
 .card.unavailable .count {
   color: var(--muted);
 }
 
-.card.green {
-  border-color: var(--green);
+.card.band-packed {
+  border-color: var(--red);
+  background: var(--red-bg);
 }
-.card.amber {
+.card.band-full {
+  border-color: var(--red);
+}
+.card.band-busy {
   border-color: var(--amber);
 }
-.card.red {
-  border-color: var(--red);
+.card.band-typical {
+  border-color: var(--blue);
+}
+.card.band-open {
+  border-color: var(--green);
+}
+
+.card .comparison {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding: 0 1.5rem;
+}
+
+.card {
+  cursor: pointer;
 }
 
 .star {
@@ -318,4 +349,165 @@ footer {
 footer a {
   color: inherit;
   text-decoration: underline;
+}
+
+/* --- Trend graph modal ---------------------------------------------------- */
+.graph-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.graph-modal[hidden] {
+  display: none;
+}
+
+.graph-sheet {
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface);
+  border-radius: 1rem 1rem 0 0;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.graph-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.graph-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.graph-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.25rem;
+  min-width: 44px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.graph-ranges {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.graph-range {
+  flex: 1;
+  padding: 0.5rem 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.graph-range.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.graph-body {
+  min-height: 190px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+}
+
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart-band {
+  fill: var(--blue);
+  opacity: 0.18;
+}
+
+/* The "typical" (p25–p75) range and median for each point's day-and-hour,
+   behind the actual line. Grey so it reads as context, not data. */
+.chart-typical-band {
+  fill: var(--muted);
+  opacity: 0.16;
+}
+
+.chart-typical-median {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+.chart-line {
+  stroke: var(--blue);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-dot {
+  fill: var(--blue);
+}
+
+.chart-ylabel {
+  fill: var(--muted);
+  font-size: 9px;
+  text-anchor: end;
+}
+
+.chart-xlabel {
+  fill: var(--muted);
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+.chart-empty {
+  fill: var(--muted);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.graph-status {
+  margin-top: 0.5rem;
+  min-height: 1.1em;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.graph-legend {
+  margin-top: 0.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.graph-legend .swatch {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.graph-legend .swatch-typical {
+  color: var(--muted);
 }

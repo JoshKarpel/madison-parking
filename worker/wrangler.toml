@@ -1,7 +1,22 @@
 name = "madison-parking"
 main = "src/index.js"
 compatibility_date = "2026-07-11"
-
-# Free-tier Worker. No KV, no Durable Objects, no bindings needed — it just
-# proxies one upstream JSON endpoint and adds CORS + caching.
 workers_dev = true
+
+# Two cron rates, dispatched by event.cron in the scheduled handler:
+#   "* * * * *" — poll the feed every minute. It only refreshes every few
+#     minutes, but sampling faster never misses an update, and feed-derived
+#     timestamps + INSERT OR IGNORE make the extra polls idempotent no-ops.
+#   "30 4 * * 0" — weekly maintenance (Sun 04:30 UTC, off-peak): prune
+#     past-retention samples and rebuild the /stats baselines from all history.
+[triggers]
+crons = ["* * * * *", "30 4 * * 0"]
+
+# History store. Create the remote database once with
+#   wrangler d1 create madison-parking
+# then paste the returned database_id below. See worker/README.md.
+[[d1_databases]]
+binding = "madison_parking"
+database_name = "madison-parking"
+database_id = "d16caeb1-3bba-4876-8ef6-ecb1a7036d98"
+migrations_dir = "migrations"

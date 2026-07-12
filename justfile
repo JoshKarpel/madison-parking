@@ -8,6 +8,12 @@ set ignore-comments
 list:
     @just --list
 
+[doc("Run the test suite (no framework, plain node)")]
+test:
+    @node test/run.mjs
+
+alias t := test
+
 [group('worker')]
 [doc("Authenticate wrangler with Cloudflare (first time only)")]
 worker-login:
@@ -19,6 +25,21 @@ worker-deploy:
     cd worker && exec npx wrangler deploy
 
 alias d := worker-deploy
+
+[group('worker')]
+[doc("Create the D1 history database (one time; paste the id into wrangler.toml)")]
+worker-db-create:
+    cd worker && exec npx wrangler d1 create madison-parking
+
+[group('worker')]
+[doc("Apply D1 migrations to the remote (production) database")]
+worker-migrate:
+    cd worker && exec npx wrangler d1 migrations apply madison-parking --remote
+
+[group('worker')]
+[doc("Apply D1 migrations to the local dev database")]
+worker-migrate-local:
+    cd worker && exec npx wrangler d1 migrations apply madison-parking --local
 
 [group('worker')]
 [doc("Run the Worker locally at http://localhost:8787")]

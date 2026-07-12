@@ -9,6 +9,9 @@ const SHELL = [
   "./index.html",
   "./app.js",
   "./garages.js",
+  "./history.js",
+  "./coloring.js",
+  "./chart.js",
   "./style.css",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
@@ -58,11 +61,16 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
           return res;
         })
-        .catch(() => caches.match(request))
+        // Offline: serve the last cached copy if we have one, otherwise a
+        // network-error Response. Returning undefined here would make
+        // respondWith throw ("Failed to convert value to 'Response'").
+        .catch(async () => (await caches.match(request)) || Response.error())
     );
     return;
   }
