@@ -13,7 +13,7 @@ No frameworks, no build step. Vanilla JS + ES modules deployed as raw static fil
   ⠿ grip to reorder) and everything else collapses into a smaller grid below.
   Each known garage links to Google Maps and can carry a landmark note. While
   open and visible it auto-refreshes on a timer (`REFRESH_INTERVAL_MS`, shown as a
-  countdown bar next to the status), and also refreshes on tab focus and on
+  countdown bar and "checking for update in Ns" label next to the status), and also refreshes on tab focus and on
   pull-to-refresh. Works offline (shows last-known numbers, clearly marked stale).
 - **`worker/`** — a Cloudflare Worker that fetches the upstream JSON, adds CORS,
   caches at the edge for 60s, and returns a `502` on upstream failure.

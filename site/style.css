@@ -98,8 +98,8 @@ h1 {
 }
 
 .refresh-progress {
-  flex: 1;
-  max-width: 96px;
+  flex: none;
+  width: 64px;
   height: 4px;
   background: var(--border);
   border-radius: 999px;
@@ -112,6 +112,11 @@ h1 {
   width: 0;
   background: var(--muted);
   border-radius: 999px;
+}
+
+.refresh-label {
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 .status[data-state="live"] {

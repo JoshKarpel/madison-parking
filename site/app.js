@@ -26,6 +26,7 @@ const els = {
   modified: document.getElementById("modified"),
   status: document.getElementById("status"),
   progressBar: document.getElementById("refresh-progress-bar"),
+  refreshLabel: document.getElementById("refresh-label"),
   favorites: document.getElementById("favorites"),
   favoritesEmpty: document.getElementById("favorites-empty"),
   others: document.getElementById("others"),
@@ -208,6 +209,9 @@ async function refresh() {
   if (refreshing) return;
   refreshing = true;
   setStatus("refreshing");
+  clearInterval(labelTimer);
+  labelTimer = null;
+  els.refreshLabel.textContent = "checking…";
   try {
     const data = await fetchFresh();
     saveData(data);
@@ -324,6 +328,8 @@ window.addEventListener("touchend", () => {
 // A self-rescheduling timer (not setInterval) so any refresh, manual or timed,
 // restarts the countdown, keeping the progress bar in sync with the next fetch.
 let pollTimer = null;
+let labelTimer = null;
+let nextRefreshAt = 0;
 
 function restartProgressBar() {
   const bar = els.progressBar;
@@ -339,18 +345,31 @@ function stopProgressBar() {
   els.progressBar.style.width = "0%";
 }
 
+function updateCountdownLabel() {
+  const remainingSec = Math.ceil((nextRefreshAt - Date.now()) / 1000);
+  els.refreshLabel.textContent = `checking for update in ${Math.max(0, remainingSec)}s`;
+}
+
 function scheduleNextRefresh() {
   clearTimeout(pollTimer);
+  clearInterval(labelTimer);
   pollTimer = null;
+  labelTimer = null;
   if (document.visibilityState !== "visible") return;
+  nextRefreshAt = Date.now() + REFRESH_INTERVAL_MS;
   restartProgressBar();
+  updateCountdownLabel();
+  labelTimer = setInterval(updateCountdownLabel, 1000);
   pollTimer = setTimeout(refresh, REFRESH_INTERVAL_MS);
 }
 
 function stopPolling() {
   clearTimeout(pollTimer);
+  clearInterval(labelTimer);
   pollTimer = null;
+  labelTimer = null;
   stopProgressBar();
+  els.refreshLabel.textContent = "";
 }
 
 // --- Lifecycle ---------------------------------------------------------------
