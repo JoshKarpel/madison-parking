@@ -2,3 +2,6 @@
 node_modules/
 .wrangler/
 .dev.vars
+
+# Headless-test screenshot output (see `just shot`).
+/shot.png

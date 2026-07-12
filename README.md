@@ -1,4 +1,4 @@
-# Madison Parking
+# Downtown Madison Parking
 
 A small, installable PWA that shows live downtown Madison parking-garage vacancy
 counts at a glance. Static files on GitHub Pages, fed by a Cloudflare Worker that
@@ -9,9 +9,11 @@ No frameworks, no build step. Vanilla JS + ES modules deployed as raw static fil
 ## How it works
 
 - **`site/`** — the PWA. Renders instantly from `localStorage`-cached last-known
-  data, then fetches fresh from the Worker. Favorites pin to the top; everything
-  else collapses into a smaller grid below. Refreshes on tab focus and on
-  pull-to-refresh. Works offline (shows last-known numbers, clearly marked stale).
+  data, then fetches fresh from the Worker. Favorites pin to the top (drag their
+  ⠿ grip to reorder) and everything else collapses into a smaller grid below.
+  Each known garage links to Google Maps and can carry a landmark note. Refreshes
+  on tab focus and on pull-to-refresh. Works offline (shows last-known numbers,
+  clearly marked stale).
 - **`worker/`** — a Cloudflare Worker that fetches the upstream JSON, adds CORS,
   caches at the edge for 60s, and returns a `502` on upstream failure.
 
@@ -35,16 +37,18 @@ table.
 | 2  | State Street Capitol |
 | 5  | State Street Campus |
 | 6  | Capitol Square North |
-| 9  | **Unknown** — present in the JSON but not in the city's rendered table |
 | 18 | South Livingston St |
 | 19 | Wilson Street |
 
-**ID 9 caveat:** it appears in the data feed but not in the city's HTML table, so
-we don't know which garage it is. It's labeled "Unknown (ID 9)". The UI renders
-any unmapped ID as `Ramp <id>` (rather than crashing), and any mapped ID missing
-from a response as unavailable (rather than dropping it).
+**ID 9 caveat:** ID 9 appears in the data feed but not in the city's HTML table,
+so we don't know which garage it is. It is hidden from the display via the
+`HIDDEN_IDS` set in [`site/app.js`](site/app.js); remove it there if the city
+ever documents what it is. Any other unmapped ID still renders as `Ramp <id>`
+(rather than crashing), and any mapped ID missing from a response renders as
+unavailable (rather than being dropped).
 
-Edit the mapping in [`site/garages.js`](site/garages.js).
+Edit the mapping (and per-garage landmark `note`s) in
+[`site/garages.js`](site/garages.js).
 
 ## Deploy
 
@@ -81,6 +85,7 @@ GitHub Pages, no build step) and `deploy-worker` (`wrangler deploy`).
 3. Launch it from the home screen — it opens standalone, fetches fresh data on
    open, and works offline with the last-known numbers.
 
-Tap the ☆ on any garage to pin it to your favorites. Favorites are stored only on
-your own phone (`localStorage`), so you and your partner can each pick your own —
-no accounts, no sync.
+Tap the ☆ on any garage to pin it to your favorites, and drag the ⠿ grip to
+reorder them. Tap a garage's name to open it in Google Maps. Favorites and their
+order are stored only on your own phone (`localStorage`), so you and your partner
+can each pick your own: no accounts, no sync.

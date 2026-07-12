@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
-    <title>Madison Parking</title>
+    <title>Downtown Madison Parking</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
@@ -13,7 +13,7 @@
   <body>
     <div id="refresh-indicator"></div>
     <header>
-      <h1>Downtown Parking</h1>
+      <h1>Downtown Madison Parking</h1>
       <p class="meta">
         Updated: <span id="modified">…</span>
       </p>
@@ -36,7 +36,16 @@
     </main>
 
     <footer>
-      <p>Live vacancy counts. Data from the City of Madison. Pull down to refresh.</p>
+      <p>
+        Live vacancy counts from the
+        <a
+          href="https://www.cityofmadison.com/parking/garages-lots/current-hourly-parking-availability"
+          target="_blank"
+          rel="noopener"
+          >City of Madison</a
+        >. Tap a garage name for its map. Pull down to refresh; drag ⠿ to reorder
+        favorites.
+      </p>
     </footer>
 
     <script type="module" src="./app.js"></script>

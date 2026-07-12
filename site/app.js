@@ -8,6 +8,10 @@ const API_URL = "https://madison-parking.josh-karpel.workers.dev";
 // otherwise       -> nearly full
 const THRESHOLDS = { green: 150, amber: 50 };
 
+// IDs that appear in the upstream feed but we don't want to show (e.g. ID 9,
+// which the city's data reports but which isn't in their public garage table).
+const HIDDEN_IDS = new Set(["9"]);
+
 const STORAGE_KEYS = {
   data: "parking:data",
   favorites: "parking:favorites",
@@ -38,17 +42,24 @@ function saveData(data) {
 function loadFavorites() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.favorites);
-    return new Set(raw ? JSON.parse(raw) : []);
+    const ids = raw ? JSON.parse(raw) : [];
+    return Array.isArray(ids) ? ids.map(String) : [];
   } catch {
-    return new Set();
+    return [];
   }
 }
 
-function saveFavorites(favorites) {
-  localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify([...favorites]));
+function saveFavorites(order) {
+  localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(order));
 }
 
-let favorites = loadFavorites();
+// Ordered list of favorited garage IDs. The order is user-controlled (drag a
+// favorite by its grip to reorder) and drives the order favorites render in.
+let favoriteOrder = loadFavorites();
+
+function isFavorite(id) {
+  return favoriteOrder.includes(id);
+}
 
 function colorClass(count) {
   if (count == null) return "unavailable";
@@ -66,6 +77,7 @@ function garageEntries(vacancies) {
     ...Object.keys(vacancies || {}),
   ]);
   return [...ids]
+    .filter((id) => !HIDDEN_IDS.has(id))
     .map((id) => {
       const known = GARAGES[id];
       const raw = vacancies ? vacancies[id] : undefined;
@@ -73,31 +85,49 @@ function garageEntries(vacancies) {
       return {
         id,
         name: known ? known.name : `Ramp ${id}`,
-        short: known ? known.short : `Ramp ${id}`,
+        note: known ? known.note : undefined,
         count,
+        isKnown: Boolean(known),
       };
     })
     .sort((a, b) => Number(a.id) - Number(b.id));
 }
 
-function makeCard(entry, isFavorite) {
+function mapsUrl(entry) {
+  const query = encodeURIComponent(`${entry.name} Garage, Madison, WI`);
+  return `https://www.google.com/maps/search/?api=1&query=${query}`;
+}
+
+function makeCard(entry, favorited) {
   const card = document.createElement("div");
   card.className = `card ${colorClass(entry.count)}`;
+  card.dataset.id = entry.id;
 
   const star = document.createElement("button");
   star.className = "star";
   star.type = "button";
-  star.textContent = isFavorite ? "★" : "☆";
+  star.textContent = favorited ? "★" : "☆";
   star.setAttribute(
     "aria-label",
-    isFavorite ? `Unfavorite ${entry.name}` : `Favorite ${entry.name}`
+    favorited ? `Unfavorite ${entry.name}` : `Favorite ${entry.name}`
   );
-  star.setAttribute("aria-pressed", String(isFavorite));
+  star.setAttribute("aria-pressed", String(favorited));
   star.addEventListener("click", () => toggleFavorite(entry.id));
 
-  const name = document.createElement("div");
+  // Known garages link out to Google Maps; unmapped ramps have no known
+  // location, so their name stays plain text.
+  const name = document.createElement(entry.isKnown ? "a" : "div");
   name.className = "name";
   name.textContent = entry.name;
+  if (entry.isKnown) {
+    name.href = mapsUrl(entry);
+    name.target = "_blank";
+    name.rel = "noopener";
+    const pin = document.createElement("span");
+    pin.className = "pin";
+    pin.textContent = "📍";
+    name.append(" ", pin);
+  }
 
   const count = document.createElement("div");
   count.className = "count";
@@ -108,32 +138,41 @@ function makeCard(entry, isFavorite) {
   label.textContent = entry.count == null ? "unavailable" : "spots";
 
   card.append(star, name, count, label);
+
+  if (entry.note) {
+    const note = document.createElement("div");
+    note.className = "note";
+    note.textContent = entry.note;
+    card.append(note);
+  }
+
+  // Favorites can be dragged to reorder, via a grip handle.
+  if (favorited) card.append(makeGrip(card, entry));
+
   return card;
 }
 
 function toggleFavorite(id) {
-  if (favorites.has(id)) favorites.delete(id);
-  else favorites.add(id);
-  saveFavorites(favorites);
-  const data = loadCachedData();
-  if (data) render(data);
+  const i = favoriteOrder.indexOf(id);
+  if (i >= 0) favoriteOrder.splice(i, 1);
+  else favoriteOrder.push(id);
+  saveFavorites(favoriteOrder);
+  render(loadCachedData());
 }
 
 function render(data, { stale = false } = {}) {
   els.modified.textContent = data && data.modified ? data.modified : "unknown";
 
   const entries = garageEntries(data ? data.vacancies : {});
-  const favEntries = entries.filter((e) => favorites.has(e.id));
-  const otherEntries = entries.filter((e) => !favorites.has(e.id));
+  const byId = new Map(entries.map((e) => [e.id, e]));
 
-  els.favorites.replaceChildren(
-    ...favEntries.map((e) => makeCard(e, true))
-  );
+  const favEntries = favoriteOrder.map((id) => byId.get(id)).filter(Boolean);
+  const otherEntries = entries.filter((e) => !isFavorite(e.id));
+
+  els.favorites.replaceChildren(...favEntries.map((e) => makeCard(e, true)));
   els.favoritesEmpty.hidden = favEntries.length > 0;
 
-  els.others.replaceChildren(
-    ...otherEntries.map((e) => makeCard(e, false))
-  );
+  els.others.replaceChildren(...otherEntries.map((e) => makeCard(e, false)));
 }
 
 function setStatus(state) {
@@ -176,6 +215,61 @@ async function refresh() {
   }
 }
 
+// --- Drag-to-reorder favorites ----------------------------------------------
+// Pointer Events (not HTML5 drag-and-drop, which doesn't work on touch). The
+// dragged card is re-inserted among its siblings as the pointer moves; on
+// release the new DOM order becomes the persisted favorite order.
+let dragState = null;
+
+function makeGrip(card, entry) {
+  const grip = document.createElement("button");
+  grip.className = "grip";
+  grip.type = "button";
+  grip.textContent = "⠿";
+  grip.setAttribute("aria-label", `Reorder ${entry.name}`);
+
+  grip.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    dragState = { card, pointerId: e.pointerId };
+    card.classList.add("dragging");
+    try {
+      grip.setPointerCapture(e.pointerId);
+    } catch {}
+  });
+
+  grip.addEventListener("pointermove", (e) => {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+    const after = dragAfterElement(els.favorites, e.clientY, dragState.card);
+    if (after == null) els.favorites.appendChild(dragState.card);
+    else els.favorites.insertBefore(dragState.card, after);
+  });
+
+  const end = (e) => {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+    dragState.card.classList.remove("dragging");
+    dragState = null;
+    favoriteOrder = [...els.favorites.children].map((c) => c.dataset.id);
+    saveFavorites(favoriteOrder);
+  };
+  grip.addEventListener("pointerup", end);
+  grip.addEventListener("pointercancel", end);
+
+  return grip;
+}
+
+function dragAfterElement(container, y, dragging) {
+  let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+  for (const child of container.children) {
+    if (child === dragging) continue;
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) {
+      closest = { offset, element: child };
+    }
+  }
+  return closest.element;
+}
+
 // --- Pull-to-refresh ---------------------------------------------------------
 let pullStartY = null;
 let pullDistance = 0;
@@ -184,6 +278,10 @@ const PULL_THRESHOLD = 70;
 window.addEventListener(
   "touchstart",
   (e) => {
+    if (dragState) {
+      pullStartY = null;
+      return;
+    }
     if (window.scrollY === 0 && e.touches.length === 1) {
       pullStartY = e.touches[0].clientY;
     } else {
@@ -196,7 +294,7 @@ window.addEventListener(
 window.addEventListener(
   "touchmove",
   (e) => {
-    if (pullStartY == null) return;
+    if (dragState || pullStartY == null) return;
     pullDistance = e.touches[0].clientY - pullStartY;
     if (pullDistance > 0) {
       const shown = Math.min(pullDistance, PULL_THRESHOLD * 1.5);

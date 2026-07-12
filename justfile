@@ -36,3 +36,30 @@ serve:
     cd site && exec python3 -m http.server 8137
 
 alias s := serve
+
+# Headless Chrome flags: --password-store=basic --use-mock-keychain avoid the
+# GNOME keyring unlock popup; --no-sandbox is needed under WSL.
+chrome-flags := "--headless --disable-gpu --no-sandbox --password-store=basic --use-mock-keychain --virtual-time-budget=4000"
+
+[group('site')]
+[doc("Screenshot the local site headless to the given file (boots a temp server)")]
+shot file="shot.png":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 -m http.server 8137 --directory site >/dev/null 2>&1 &
+    trap 'kill $!' EXIT
+    sleep 1
+    google-chrome {{ chrome-flags }} --hide-scrollbars \
+      --force-device-scale-factor=2 --window-size=390,844 \
+      --screenshot="{{ justfile_directory() }}/{{ file }}" http://localhost:8137/
+    echo "wrote {{ file }}"
+
+[group('site')]
+[doc("Dump the local site's rendered DOM headless (after JS runs)")]
+dump:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 -m http.server 8137 --directory site >/dev/null 2>&1 &
+    trap 'kill $!' EXIT
+    sleep 1
+    google-chrome {{ chrome-flags }} --dump-dom http://localhost:8137/
