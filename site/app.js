@@ -58,6 +58,15 @@ const TREND_TEXT = {
   steady: "≈ holding steady",
 };
 
+// The chart toggle emoji mirrors the vacancy trend: emptying out means more open
+// spots (line rising), filling up means fewer (line falling), steady is flat.
+// No recent trend falls back to the neutral wavy dash.
+const TREND_EMOJI = {
+  filling: "📉",
+  emptying: "📈",
+  steady: "〰️",
+};
+
 const STORAGE_KEYS = {
   data: "parking:data",
   order: "parking:order",
@@ -328,21 +337,34 @@ function makeCard(entry, { minimized, index, total }) {
     );
   }
 
-  // Garages with a known address get a Google Maps link in the bottom-right
+  // Garages with a known address get a Google Maps link in the top-right
   // corner; unmapped ramps have no known location, so no link.
   if (entry.address) card.append(makeMapLink(entry));
+
+  // The chart toggle sits in the bottom-right corner; tapping it opens/closes
+  // the trend view inline in place.
+  card.append(makeGraphToggle(entry));
 
   // When expanded, the trend view mounts into the card below the summary.
   if (entry.id === expandedId) card.append(graphView.mount(entry));
 
-  // Tapping the card body (not a control or the graph itself) toggles the trend
-  // view open/closed in place.
-  card.addEventListener("click", (e) => {
-    if (e.target.closest(".minimize, .maplink, .move, .graph-view")) return;
-    toggleExpanded(entry.id);
-  });
-
   return card;
+}
+
+function makeGraphToggle(entry) {
+  const btn = document.createElement("button");
+  btn.className = "graph-toggle";
+  btn.type = "button";
+  const trend = trendByGarage.get(entry.id);
+  btn.textContent = (trend && TREND_EMOJI[trend.direction]) || TREND_EMOJI.steady;
+  const expanded = entry.id === expandedId;
+  btn.setAttribute("aria-expanded", String(expanded));
+  btn.setAttribute(
+    "aria-label",
+    `${expanded ? "Hide" : "Show"} ${entry.name} trend`
+  );
+  btn.addEventListener("click", () => toggleExpanded(entry.id));
+  return btn;
 }
 
 function makeMove(entry, delta, glyph, direction, atEnd) {

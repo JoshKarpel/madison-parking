@@ -68,8 +68,11 @@ full cards, and the row itself is a button that restores it (moving it to the en
 of the order so it lands at the bottom of the full cards). New feed IDs append to
 the order and render full by default.
 
-Tapping a card body toggles its **trend view inline** in place (tap the header
-again to collapse); at most one is expanded (`expandedId`). The view
+A chart-toggle emoji button in the card's bottom-right corner toggles its
+**trend view inline** in place (tap again to collapse); at most one is expanded
+(`expandedId`). Its glyph mirrors the short-term trend (📈 emptying / 📉 filling
+/ 〰️ steady or unknown). The Google Maps link sits in the top-right corner. The
+view
 (`site/graph.js`, `createGraphView`) is a factory that mounts a single reusable
 element the app re-appends into the expanded card on each re-render, so the
 selected range and loaded chart survive a background refresh. A short-term

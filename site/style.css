@@ -314,9 +314,6 @@ h2 {
   padding: 0 1.5rem;
 }
 
-.card {
-  cursor: pointer;
-}
 
 /* Left-centered, between the ▲/▼ reorder arrows, so minimize sits on the same
    side as the ＋ that restores a minimized row. */
@@ -340,7 +337,8 @@ h2 {
 }
 
 .move,
-.maplink {
+.maplink,
+.graph-toggle {
   position: absolute;
   background: none;
   border: none;
@@ -375,9 +373,20 @@ h2 {
 
 .maplink {
   right: 0.5rem;
-  bottom: 0.5rem;
+  top: 0.5rem;
   font-size: 1.25rem;
   text-decoration: none;
+}
+
+.graph-toggle {
+  right: 0.5rem;
+  bottom: 0.5rem;
+  font-size: 1.25rem;
+  opacity: 0.55;
+}
+
+.graph-toggle[aria-expanded="true"] {
+  opacity: 1;
 }
 
 footer {
