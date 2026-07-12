@@ -85,16 +85,16 @@ function garageEntries(vacancies) {
       return {
         id,
         name: known ? known.name : `Ramp ${id}`,
+        address: known ? known.address : undefined,
         note: known ? known.note : undefined,
         count,
-        isKnown: Boolean(known),
       };
     })
     .sort((a, b) => Number(a.id) - Number(b.id));
 }
 
-function mapsUrl(entry) {
-  const query = encodeURIComponent(`${entry.name} Garage, Madison, WI`);
+function mapsUrl(address) {
+  const query = encodeURIComponent(address);
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 }
 
@@ -114,13 +114,13 @@ function makeCard(entry, favorited) {
   star.setAttribute("aria-pressed", String(favorited));
   star.addEventListener("click", () => toggleFavorite(entry.id));
 
-  // Known garages link out to Google Maps; unmapped ramps have no known
-  // location, so their name stays plain text.
-  const name = document.createElement(entry.isKnown ? "a" : "div");
+  // Garages with a known address link out to Google Maps; unmapped ramps have
+  // no known location, so their name stays plain text.
+  const name = document.createElement(entry.address ? "a" : "div");
   name.className = "name";
   name.textContent = entry.name;
-  if (entry.isKnown) {
-    name.href = mapsUrl(entry);
+  if (entry.address) {
+    name.href = mapsUrl(entry.address);
     name.target = "_blank";
     name.rel = "noopener";
     const pin = document.createElement("span");
@@ -319,6 +319,16 @@ document.addEventListener("visibilitychange", () => {
 });
 
 if ("serviceWorker" in navigator) {
+  // When a newly-deployed worker activates and takes control, reload once so
+  // the fresh app applies immediately. Guarded against the first install (no
+  // prior controller) and against reload loops.
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let reloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    location.reload();
+  });
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js");
   });

@@ -28,6 +28,11 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v6.0.0
 
+      # Stamp the commit SHA into the service worker so each deploy installs a
+      # fresh worker + cache, otherwise clients keep serving the cached shell.
+      - name: Stamp service worker cache version
+        run: sed -i "s/__BUILD_ID__/${{ github.sha }}/" site/sw.js
+
       - name: Upload site/ artifact
         uses: actions/upload-pages-artifact@v5.0.0
         with:
