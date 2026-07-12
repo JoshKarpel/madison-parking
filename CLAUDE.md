@@ -112,6 +112,16 @@ stale files. The `SHELL` list must include every ES module the app imports
 (`app.js`, `version.js`, `history.js`, `coloring.js`, `chart.js`, `garages.js`);
 a module missing from it won't be available offline.
 
+A second stamp, `__ICON_HASH__`, versions the PWA icon URLs. The icon
+references in `manifest.webmanifest`, `index.html`, and the `sw.js` `SHELL`
+carry `./icons/icon-*.png?v=__ICON_HASH__`; the deploy replaces the token with a
+content hash of the committed PNGs (`Stamp icon version` step). Android freezes
+the installed WebAPK's icon at install and only re-mints when the icon *URL*
+changes, so a same-path byte swap never propagates: bumping the query when (and
+only when) the bytes change is what lets a new icon reach installed phones
+without a reinstall. Regenerate the PNGs from the SVG source with `just icons`
+after editing `site/icons/icon.svg`, and commit them so the hash reflects them.
+
 The client's derived IndexedDB caches (bucket aggregates and `/stats` blobs)
 hold values shaped by the Worker's response format. `reconcileBuildVersion`
 (`site/history.js`, run once at startup before any cache read) drops them

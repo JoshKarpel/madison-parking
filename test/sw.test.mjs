@@ -75,6 +75,23 @@ test("SW returns a Response (not undefined) when the API is offline and nothing 
   eq(res.isError, true);
 });
 
+test("SW ignores non-http(s) requests (e.g. chrome-extension) rather than caching them", () => {
+  let fetched = false;
+  const { listeners } = loadServiceWorker({
+    fetchImpl: () => {
+      fetched = true;
+      return Promise.resolve();
+    },
+    cached: null,
+  });
+  const extRequest = { url: "chrome-extension://abcdefghij/inject.js", method: "GET" };
+  const responded = dispatchFetch(listeners, extRequest);
+  // The handler must return early: no respondWith (the browser handles it) and
+  // no cache.put, which throws on the unsupported chrome-extension scheme.
+  eq(responded, undefined);
+  eq(fetched, false);
+});
+
 test("SW serves the cached copy when the API is offline but a cache entry exists", async () => {
   const cachedResponse = { body: "cached-stats", ok: true };
   const { listeners } = loadServiceWorker({

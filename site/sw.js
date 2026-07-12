@@ -15,8 +15,8 @@ const SHELL = [
   "./chart.js",
   "./style.css",
   "./manifest.webmanifest",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
+  "./icons/icon-192.png?v=__ICON_HASH__",
+  "./icons/icon-512.png?v=__ICON_HASH__",
 ];
 
 self.addEventListener("install", (event) => {
@@ -54,6 +54,11 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+
+  // The Cache API only supports http(s). Extension-injected requests
+  // (chrome-extension://, etc.) are cross-origin, so without this they'd hit the
+  // API branch below and throw in cache.put; let the browser handle them.
+  if (url.protocol !== "http:" && url.protocol !== "https:") return;
 
   // Network-first for the API (cross-origin worker). The app itself also caches
   // last-known data in localStorage; this just avoids a hard failure offline.

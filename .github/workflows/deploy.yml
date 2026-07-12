@@ -46,6 +46,17 @@ jobs:
       - name: Stamp build id
         run: grep -rl __BUILD_ID__ site | xargs sed -i "s/__BUILD_ID__/${{ github.sha }}/g"
 
+      # Stamp a content hash of the icon PNGs into their ?v= query so the icon
+      # URL changes only when the icon actually changes. That's what lets Android
+      # re-mint the installed PWA's WebAPK (a same-URL byte swap is not detected),
+      # without churning the icon on every unrelated deploy the way __BUILD_ID__
+      # would. Hashing the committed PNGs (not the SVG) versions the exact bytes
+      # served, independent of the rasterizer.
+      - name: Stamp icon version
+        run: |
+          ICON_HASH=$(cat site/icons/icon-192.png site/icons/icon-512.png | sha256sum | cut -c1-12)
+          grep -rl __ICON_HASH__ site | xargs sed -i "s/__ICON_HASH__/${ICON_HASH}/g"
+
       - name: Upload site/ artifact
         uses: actions/upload-pages-artifact@v5.0.0
         with:
