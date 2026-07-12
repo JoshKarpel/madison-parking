@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <!-- The current (2018) Madison municipal flag, mashed up with a car: sky-blue
+       field, white diagonal band (Lakes Mendota/Monona and the isthmus), and the
+       black cross (the four lakes / the Capitol's cruciform plan). The gold dome
+       circle at the center is replaced by a gold car. Colors and cross shape are
+       the flag's own (#6cf field, #fff band, #fc3 gold); this is the flag's
+       center square, so the emblem stays centered in the icon. -->
+  <rect x="0" y="0" width="600" height="600" fill="#6cf"/>
+  <polygon points="0,360 600,0 600,240 0,600" fill="#fff"/>
+
+  <path transform="translate(300 300)" fill="#0f172a"
+        d="m-57-31h26v-26l31-31 31 31v26H57L88 0 57 31H31V57L0 88-31 57V31H-57L-88 0Z"/>
+
+  <!-- Gold car in place of the Capitol dome: body, cabin, and two wheels that
+       protrude below the body so it reads as a car even as a solid silhouette. -->
+  <g fill="#fc3">
+    <rect x="256" y="289" width="88" height="26" rx="10"/>
+    <rect x="274" y="275" width="53" height="21" rx="8"/>
+    <circle cx="278" cy="315" r="12"/>
+    <circle cx="322" cy="315" r="12"/>
+  </g>
+</svg>

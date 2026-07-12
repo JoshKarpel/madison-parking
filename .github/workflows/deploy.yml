@@ -38,10 +38,13 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v6.0.0
 
-      # Stamp the commit SHA into the service worker so each deploy installs a
-      # fresh worker + cache, otherwise clients keep serving the cached shell.
-      - name: Stamp service worker cache version
-        run: sed -i "s/__BUILD_ID__/${{ github.sha }}/" site/sw.js
+      # Stamp the commit SHA into every file that carries the __BUILD_ID__ token
+      # (the service worker's cache name and the client's version.js), so each
+      # deploy installs a fresh worker + shell cache and discards derived client
+      # caches whose shape may have changed. Otherwise clients keep serving the
+      # cached shell and stale-shaped cached data.
+      - name: Stamp build id
+        run: grep -rl __BUILD_ID__ site | xargs sed -i "s/__BUILD_ID__/${{ github.sha }}/g"
 
       - name: Upload site/ artifact
         uses: actions/upload-pages-artifact@v5.0.0

@@ -84,3 +84,10 @@ dump:
     trap 'kill $!' EXIT
     sleep 1
     google-chrome {{ chrome-flags }} --dump-dom http://localhost:8137/
+
+[group('site')]
+[doc("Rasterize the PWA icons from site/icons/icon.svg (the single source)")]
+icons:
+    magick -background none site/icons/icon.svg -resize 512x512 site/icons/icon-512.png
+    magick -background none site/icons/icon.svg -resize 192x192 site/icons/icon-192.png
+    @echo "regenerated icon-192.png and icon-512.png from icon.svg"

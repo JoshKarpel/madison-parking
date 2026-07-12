@@ -60,9 +60,8 @@ bar/label), `visibilitychange` to visible, and pull-to-refresh. Fetch failure
 keeps showing cached numbers marked stale; never blanks the screen.
 
 Favorites are an **ordered** list of IDs in `localStorage` (`parking:favorites`),
-reorderable by dragging a card's grip. Drag uses Pointer Events, not HTML5
-drag-and-drop (which doesn't work on touch); the persisted order is read back
-from DOM order on drop.
+reordered by the up/down arrows in a favorite card's left corners (`moveFavorite`
+swaps neighbors); the end cards' out-of-range arrow is disabled.
 
 ## History (collection, API, client cache)
 
@@ -101,14 +100,25 @@ and relative coloring. Full detail in `worker/README.md`; the essentials:
 ## Service worker updates (important)
 
 `site/sw.js` is cache-first for the app shell, so a new deploy is invisible to
-installed clients unless the worker itself changes. `CACHE_VERSION` is the
-literal `__BUILD_ID__`, which the deploy workflow rewrites to the commit SHA
-(`sed` step in `deploy.yml`) so every deploy installs a fresh worker + cache.
-`app.js` reloads once on `controllerchange` to apply the update live. If you
-touch caching, preserve this: changing shell assets without changing `sw.js`
-means clients keep serving stale files. The `SHELL` list must include every ES
-module the app imports (`app.js`, `history.js`, `coloring.js`, `chart.js`,
-`garages.js`); a module missing from it won't be available offline.
+installed clients unless the worker itself changes. The literal `__BUILD_ID__`
+is the single build stamp: `sw.js` holds its own copy (its `CACHE_VERSION`) and
+`site/version.js` exports it as `BUILD_ID` for the client. The deploy workflow
+rewrites the token to the commit SHA in *every* file that carries it (the
+`grep -rl __BUILD_ID__ site | xargs sed` step in `deploy.yml`), so every deploy
+installs a fresh worker + shell cache. `app.js` reloads once on
+`controllerchange` to apply the update live. If you touch caching, preserve
+this: changing shell assets without changing `sw.js` means clients keep serving
+stale files. The `SHELL` list must include every ES module the app imports
+(`app.js`, `version.js`, `history.js`, `coloring.js`, `chart.js`, `garages.js`);
+a module missing from it won't be available offline.
+
+The client's derived IndexedDB caches (bucket aggregates and `/stats` blobs)
+hold values shaped by the Worker's response format. `reconcileBuildVersion`
+(`site/history.js`, run once at startup before any cache read) drops them
+whenever `BUILD_ID` changes, so a response-shape change across a deploy can't
+leave stale-shaped entries to be served (up to their TTL) and crash a consumer.
+Raw samples are schema-stable and costly to refetch, so they survive across
+builds.
 
 The API branch of the fetch handler is network-first with a cache fallback, and
 must always resolve to a `Response` (a cache miss falls back to `Response.error()`,
@@ -143,7 +153,7 @@ treats other named exports as entrypoints), so export helpers, not constants.
 For runtime behavior, `node --check` each module, then drive the rendered page
 in headless Chrome. See the `testing-parking-pwa` project memory for the full
 playbook, including CDP driving (open the graph, cycle ranges), testing offline
-against a mock Worker, and driving drag-reorder with synthetic Pointer Events.
+against a mock Worker, and exercising the favorite reorder arrows.
 
 Headless Chrome on this machine needs `--password-store=basic --use-mock-keychain`
 (avoids a GNOME keyring popup) and `--no-sandbox` (WSL); the `just` recipes

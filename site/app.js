@@ -1,6 +1,7 @@
 import { GARAGES } from "./garages.js";
 import {
   openHistoryDb,
+  reconcileBuildVersion,
   requestPersist,
   syncSamples,
   getStats,
@@ -9,6 +10,7 @@ import {
   nowSec,
   DAY_SECONDS,
 } from "./history.js";
+import { BUILD_ID } from "./version.js";
 import { classify, comparisonLabel, localCell, cellKey, MIN_CELL_OBSERVATIONS } from "./coloring.js";
 import { renderChart } from "./chart.js";
 
@@ -89,8 +91,8 @@ function saveFavorites(order) {
   localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(order));
 }
 
-// Ordered list of favorited garage IDs. The order is user-controlled (drag a
-// favorite by its grip to reorder) and drives the order favorites render in.
+// Ordered list of favorited garage IDs. The order is user-controlled (the
+// up/down arrows on a favorite card) and drives the order favorites render in.
 let favoriteOrder = loadFavorites();
 
 function isFavorite(id) {
@@ -105,7 +107,7 @@ const statsByGarage = new Map();
 // The (day_of_week, hour) baseline cell that applies to a garage right now.
 function currentCell(id) {
   const stats = statsByGarage.get(id);
-  if (!stats) return null;
+  if (!stats || !stats.cells) return null;
   const { dow, hour } = localCell(new Date());
   return stats.cells[cellKey(dow, hour)] || null;
 }
@@ -146,7 +148,7 @@ function mapsUrl(address) {
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 }
 
-function makeCard(entry, favorited) {
+function makeCard(entry, favorited, pos) {
   const card = document.createElement("div");
   const band = bandFor(entry.count, entry.id);
   const bandClass = entry.count == null ? "unavailable" : band ? `band-${band.band}` : "";
@@ -164,20 +166,9 @@ function makeCard(entry, favorited) {
   star.setAttribute("aria-pressed", String(favorited));
   star.addEventListener("click", () => toggleFavorite(entry.id));
 
-  // Garages with a known address link out to Google Maps; unmapped ramps have
-  // no known location, so their name stays plain text.
-  const name = document.createElement(entry.address ? "a" : "div");
+  const name = document.createElement("div");
   name.className = "name";
   name.textContent = entry.name;
-  if (entry.address) {
-    name.href = mapsUrl(entry.address);
-    name.target = "_blank";
-    name.rel = "noopener";
-    const pin = document.createElement("span");
-    pin.className = "pin";
-    pin.textContent = "📍";
-    name.append(" ", pin);
-  }
 
   const count = document.createElement("div");
   count.className = "count";
@@ -187,7 +178,16 @@ function makeCard(entry, favorited) {
   label.className = "count-label";
   label.textContent = entry.count == null ? "unavailable" : "spots";
 
-  card.append(star, name, count, label);
+  card.append(star, name);
+
+  if (entry.note) {
+    const note = document.createElement("div");
+    note.className = "note";
+    note.textContent = entry.note;
+    card.append(note);
+  }
+
+  card.append(count, label);
 
   // How this count compares to the garage's own history for this day and hour,
   // when there's enough history to say. Otherwise nothing (no guessing).
@@ -199,23 +199,48 @@ function makeCard(entry, favorited) {
     card.append(el);
   }
 
-  if (entry.note) {
-    const note = document.createElement("div");
-    note.className = "note";
-    note.textContent = entry.note;
-    card.append(note);
+  // Favorites reorder with up/down arrows in the left corners, disabled at the
+  // ends of the list.
+  if (favorited && pos) {
+    card.append(
+      makeMove(entry, -1, "▲", "up", pos.index === 0),
+      makeMove(entry, 1, "▼", "down", pos.index === pos.total - 1)
+    );
   }
 
-  // Favorites can be dragged to reorder, via a grip handle.
-  if (favorited) card.append(makeGrip(card, entry));
+  // Garages with a known address get a Google Maps link in the bottom-right
+  // corner; unmapped ramps have no known location, so no link.
+  if (entry.address) card.append(makeMapLink(entry));
 
-  // Tapping the card body (not the star, map link, or grip) opens its trends.
+  // Tapping the card body (not the star, map link, or move arrows) opens trends.
   card.addEventListener("click", (e) => {
-    if (e.target.closest(".star, .name, .grip")) return;
+    if (e.target.closest(".star, .maplink, .move")) return;
     openGraph(entry);
   });
 
   return card;
+}
+
+function makeMove(entry, delta, glyph, direction, atEnd) {
+  const btn = document.createElement("button");
+  btn.className = `move move-${direction}`;
+  btn.type = "button";
+  btn.textContent = glyph;
+  btn.disabled = atEnd;
+  btn.setAttribute("aria-label", `Move ${entry.name} ${direction}`);
+  btn.addEventListener("click", () => moveFavorite(entry.id, delta));
+  return btn;
+}
+
+function makeMapLink(entry) {
+  const link = document.createElement("a");
+  link.className = "maplink";
+  link.href = mapsUrl(entry.address);
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.textContent = "🗺️";
+  link.setAttribute("aria-label", `Open ${entry.name} in Google Maps`);
+  return link;
 }
 
 function toggleFavorite(id) {
@@ -240,7 +265,9 @@ function render(data, { stale = false } = {}) {
   const favEntries = favoriteOrder.map((id) => byId.get(id)).filter(Boolean);
   const otherEntries = entries.filter((e) => !isFavorite(e.id));
 
-  els.favorites.replaceChildren(...favEntries.map((e) => makeCard(e, true)));
+  els.favorites.replaceChildren(
+    ...favEntries.map((e, i) => makeCard(e, true, { index: i, total: favEntries.length }))
+  );
   els.favoritesEmpty.hidden = favEntries.length > 0;
 
   els.others.replaceChildren(...otherEntries.map((e) => makeCard(e, false)));
@@ -290,59 +317,16 @@ async function refresh() {
   }
 }
 
-// --- Drag-to-reorder favorites ----------------------------------------------
-// Pointer Events (not HTML5 drag-and-drop, which doesn't work on touch). The
-// dragged card is re-inserted among its siblings as the pointer moves; on
-// release the new DOM order becomes the persisted favorite order.
-let dragState = null;
-
-function makeGrip(card, entry) {
-  const grip = document.createElement("button");
-  grip.className = "grip";
-  grip.type = "button";
-  grip.textContent = "⠿";
-  grip.setAttribute("aria-label", `Reorder ${entry.name}`);
-
-  grip.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    dragState = { card, pointerId: e.pointerId };
-    card.classList.add("dragging");
-    try {
-      grip.setPointerCapture(e.pointerId);
-    } catch {}
-  });
-
-  grip.addEventListener("pointermove", (e) => {
-    if (!dragState || e.pointerId !== dragState.pointerId) return;
-    const after = dragAfterElement(els.favorites, e.clientY, dragState.card);
-    if (after == null) els.favorites.appendChild(dragState.card);
-    else els.favorites.insertBefore(dragState.card, after);
-  });
-
-  const end = (e) => {
-    if (!dragState || e.pointerId !== dragState.pointerId) return;
-    dragState.card.classList.remove("dragging");
-    dragState = null;
-    favoriteOrder = [...els.favorites.children].map((c) => c.dataset.id);
-    saveFavorites(favoriteOrder);
-  };
-  grip.addEventListener("pointerup", end);
-  grip.addEventListener("pointercancel", end);
-
-  return grip;
-}
-
-function dragAfterElement(container, y, dragging) {
-  let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
-  for (const child of container.children) {
-    if (child === dragging) continue;
-    const box = child.getBoundingClientRect();
-    const offset = y - box.top - box.height / 2;
-    if (offset < 0 && offset > closest.offset) {
-      closest = { offset, element: child };
-    }
-  }
-  return closest.element;
+// --- Reorder favorites -------------------------------------------------------
+// Swap a favorite with its neighbor in the given direction (delta -1 up, +1
+// down). The end cards' out-of-range arrow is disabled, so this stays in bounds.
+function moveFavorite(id, delta) {
+  const i = favoriteOrder.indexOf(id);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= favoriteOrder.length) return;
+  [favoriteOrder[i], favoriteOrder[j]] = [favoriteOrder[j], favoriteOrder[i]];
+  saveFavorites(favoriteOrder);
+  render(lastData);
 }
 
 // --- Pull-to-refresh ---------------------------------------------------------
@@ -353,10 +337,6 @@ const PULL_THRESHOLD = 70;
 window.addEventListener(
   "touchstart",
   (e) => {
-    if (dragState) {
-      pullStartY = null;
-      return;
-    }
     if (window.scrollY === 0 && e.touches.length === 1) {
       pullStartY = e.touches[0].clientY;
     } else {
@@ -369,7 +349,7 @@ window.addEventListener(
 window.addEventListener(
   "touchmove",
   (e) => {
-    if (dragState || pullStartY == null) return;
+    if (pullStartY == null) return;
     pullDistance = e.touches[0].clientY - pullStartY;
     if (pullDistance > 0) {
       const shown = Math.min(pullDistance, PULL_THRESHOLD * 1.5);
@@ -642,6 +622,7 @@ refresh();
 // failure leaves the live view working and cards simply uncolored.
 (async () => {
   historyDb = await openHistoryDb();
+  await reconcileBuildVersion(historyDb, BUILD_ID);
   requestPersist();
   const ids = garageEntries(cached ? cached.vacancies : {}).map((e) => e.id);
   loadStats(ids);

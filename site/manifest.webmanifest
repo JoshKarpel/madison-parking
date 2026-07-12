@@ -1,6 +1,6 @@
 {
   "name": "Downtown Madison Parking",
-  "short_name": "Parking",
+  "short_name": "Downtown Madison Parking",
   "description": "Live downtown Madison parking-garage vacancy counts.",
   "start_url": "./",
   "scope": "./",

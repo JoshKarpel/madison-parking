@@ -8,6 +8,8 @@
 const DB_NAME = "madison-parking-history";
 const DB_VERSION = 1;
 
+const BUILD_ID_KEY = "buildId"; // meta record tracking the deploy that filled the derived caches
+
 const STORE_SAMPLES = "samples"; // keyPath [garage_id, ts]; raw counts
 const STORE_BUCKETS = "buckets"; // keyPath [garage_id, kind, ts]; server aggregates
 const STORE_META = "meta"; // keyPath "key"; stats cache + flags
@@ -77,6 +79,39 @@ function txDone(transaction) {
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () => reject(transaction.error);
   });
+}
+
+// --- build version -----------------------------------------------------------
+
+// The bucket-aggregate and stats caches hold values shaped by the Worker's
+// response format, which can change across a deploy. Keying them to the build
+// that filled them lets a new deploy discard the old-shaped entries instead of
+// serving them (up to their TTL) and crashing consumers. Raw samples are
+// schema-stable and expensive to refetch, so they're kept across builds.
+async function clearDerivedCaches(db) {
+  const buckets = tx(db, STORE_BUCKETS, "readwrite");
+  buckets.clear();
+  await txDone(buckets.transaction);
+
+  const meta = tx(db, STORE_META, "readwrite");
+  for (const key of await done(meta.getAllKeys())) {
+    if (typeof key === "string" && key.startsWith("stats:")) meta.delete(key);
+  }
+  await txDone(meta.transaction);
+}
+
+// Drop the derived caches when the deployed build differs from the one that
+// last filled them, then record the current build. No-op if the db is null or
+// the build is unchanged. In dev the build id stays the literal, so this never
+// fires. Runs once at startup, before any derived cache is read.
+export async function reconcileBuildVersion(db, buildId) {
+  if (!db) return;
+  const current = await done(tx(db, STORE_META, "readonly").get(BUILD_ID_KEY));
+  if (current && current.value === buildId) return;
+  await clearDerivedCaches(db);
+  const store = tx(db, STORE_META, "readwrite");
+  store.put({ key: BUILD_ID_KEY, value: buildId });
+  await txDone(store.transaction);
 }
 
 // --- persistence -------------------------------------------------------------

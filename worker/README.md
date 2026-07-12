@@ -29,11 +29,13 @@ Two [cron triggers](https://developers.cloudflare.com/workers/configuration/cron
   where `observed_at` is the feed's own `modified` timestamp, and
   `INSERT OR IGNORE` drops a sample whose timestamp we already stored. Polling
   faster than the feed refreshes means we never miss an update, idempotently.
-- `30 4 * * 0` (weekly, Sunday) does maintenance off the request path: prune
+- `30 4 * * SUN` (weekly, Sunday) does maintenance off the request path: prune
   samples older than the retention window (5 years), then rebuild the `/stats`
   baselines into `stats_cells`. Weekly, not daily, because the rebuild scans all
   retained history per garage; a multi-year baseline barely moves week to week,
-  so this stays well inside D1's free-tier read budget.
+  so this stays well inside D1's free-tier read budget. (Cloudflare's weekday
+  field is 1-7 with 1=Sunday, not Unix's 0-6, so `SUN` avoids an out-of-range
+  `0`.)
 
 The feed reports `modified` as naive local Madison time (for example
 `"July 12, 2026 – 10:05am"`). It is parsed as `America/Chicago` and normalized to
