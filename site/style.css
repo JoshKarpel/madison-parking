@@ -382,11 +382,6 @@ h2 {
   right: 0.5rem;
   bottom: 0.5rem;
   font-size: 1.25rem;
-  opacity: 0.55;
-}
-
-.graph-toggle[aria-expanded="true"] {
-  opacity: 1;
 }
 
 footer {
