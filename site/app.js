@@ -5,14 +5,13 @@ import {
   requestPersist,
   syncSamples,
   getStats,
-  getRawHistory,
-  getBucketedHistory,
+  getRecentSamples,
+  computeTrend,
   nowSec,
-  DAY_SECONDS,
 } from "./history.js";
 import { BUILD_ID } from "./version.js";
-import { classify, comparisonLabel, localCell, cellKey, MIN_CELL_OBSERVATIONS } from "./coloring.js";
-import { renderChart } from "./chart.js";
+import { classify, comparisonLabel, forecastLabel, localCell, cellKey } from "./coloring.js";
+import { createGraphView } from "./graph.js";
 
 const DEFAULT_API_URL = "https://madison-parking.josh-karpel.workers.dev";
 
@@ -48,9 +47,21 @@ const HIDDEN_IDS = new Set(["9"]);
 // faster than this just re-serves the same numbers.
 const REFRESH_INTERVAL_MS = 60_000;
 
+// Window of recently-synced samples the per-card trend indicator reads over.
+// The feed updates every 1-4 min, so 30 min holds ~10-20 samples: enough for the
+// relative threshold to smooth jitter, short enough to reflect "right now".
+const TREND_WINDOW_SECONDS = 30 * 60;
+
+const TREND_TEXT = {
+  filling: "▼ filling up",
+  emptying: "▲ emptying out",
+  steady: "≈ holding steady",
+};
+
 const STORAGE_KEYS = {
   data: "parking:data",
-  favorites: "parking:favorites",
+  order: "parking:order",
+  minimized: "parking:minimized",
 };
 
 const els = {
@@ -58,9 +69,7 @@ const els = {
   status: document.getElementById("status"),
   progressBar: document.getElementById("refresh-progress-bar"),
   refreshLabel: document.getElementById("refresh-label"),
-  favorites: document.getElementById("favorites"),
-  favoritesEmpty: document.getElementById("favorites-empty"),
-  others: document.getElementById("others"),
+  cards: document.getElementById("cards"),
   refreshIndicator: document.getElementById("refresh-indicator"),
 };
 
@@ -74,12 +83,16 @@ function loadCachedData() {
 }
 
 function saveData(data) {
-  localStorage.setItem(STORAGE_KEYS.data, JSON.stringify(data));
+  try {
+    localStorage.setItem(STORAGE_KEYS.data, JSON.stringify(data));
+  } catch {
+    /* quota exceeded or storage blocked (private mode): keep the live view. */
+  }
 }
 
-function loadFavorites() {
+function loadIds(key) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.favorites);
+    const raw = localStorage.getItem(key);
     const ids = raw ? JSON.parse(raw) : [];
     return Array.isArray(ids) ? ids.map(String) : [];
   } catch {
@@ -87,29 +100,83 @@ function loadFavorites() {
   }
 }
 
-function saveFavorites(order) {
-  localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(order));
+function saveIds(key, ids) {
+  try {
+    localStorage.setItem(key, JSON.stringify(ids));
+  } catch {
+    /* quota exceeded or storage blocked: the in-memory state still applies. */
+  }
 }
 
-// Ordered list of favorited garage IDs. The order is user-controlled (the
-// up/down arrows on a favorite card) and drives the order favorites render in.
-let favoriteOrder = loadFavorites();
+// One user-adjustable ordering over every garage (the up/down arrows reorder it)
+// plus the set the user has minimized. Minimized garages render as compact rows
+// below the full cards; both orderings persist across sessions.
+let cardOrder = loadIds(STORAGE_KEYS.order);
+const minimizedIds = new Set(loadIds(STORAGE_KEYS.minimized));
 
-function isFavorite(id) {
-  return favoriteOrder.includes(id);
+function saveOrder() {
+  saveIds(STORAGE_KEYS.order, cardOrder);
+}
+
+function saveMinimized() {
+  saveIds(STORAGE_KEYS.minimized, [...minimizedIds]);
+}
+
+// Give every shown garage a slot in the ordering, appending newly-seen IDs in
+// the feed's ascending order so a new ramp lands at the end rather than vanishing.
+function reconcileOrder(ids) {
+  let changed = false;
+  for (const id of ids) {
+    if (!cardOrder.includes(id)) {
+      cardOrder.push(id);
+      changed = true;
+    }
+  }
+  if (changed) saveOrder();
+}
+
+// The active (non-minimized) IDs in display order, from the last rendered data.
+function activeIdsNow() {
+  const shown = new Set(
+    garageEntries(lastData ? lastData.vacancies : {}).map((e) => e.id)
+  );
+  return cardOrder.filter((id) => shown.has(id) && !minimizedIds.has(id));
 }
 
 // History cache (opened at startup) and per-garage baseline stats, both filled
 // asynchronously. Until stats arrive, cards render uncolored.
 let historyDb = null;
 const statsByGarage = new Map();
+const trendByGarage = new Map();
+
+// The garage whose card is currently expanded into its trend view (at most one),
+// and the reusable view element it mounts. Injects the Worker URL and getters
+// for the async-filled history db and each garage's baseline cells.
+let expandedId = null;
+const graphView = createGraphView({
+  apiUrl: API_URL,
+  getHistoryDb: () => historyDb,
+  getCells: (id) => cellsFor(id),
+});
+
+function toggleExpanded(id) {
+  expandedId = expandedId === id ? null : id;
+  if (expandedId === null) graphView.reset();
+  render(lastData);
+}
+
+// All of a garage's baseline cells, or null until its stats have loaded.
+function cellsFor(id) {
+  const stats = statsByGarage.get(id);
+  return stats && stats.cells ? stats.cells : null;
+}
 
 // The (day_of_week, hour) baseline cell that applies to a garage right now.
 function currentCell(id) {
-  const stats = statsByGarage.get(id);
-  if (!stats || !stats.cells) return null;
+  const cells = cellsFor(id);
+  if (!cells) return null;
   const { dow, hour } = localCell(new Date());
-  return stats.cells[cellKey(dow, hour)] || null;
+  return cells[cellKey(dow, hour)] || null;
 }
 
 // Relative color band for a count, or null when there's no basis to judge (no
@@ -148,23 +215,56 @@ function mapsUrl(address) {
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 }
 
-function makeCard(entry, favorited, pos) {
-  const card = document.createElement("div");
+function bandClassFor(entry) {
+  if (entry.count == null) return "unavailable";
   const band = bandFor(entry.count, entry.id);
-  const bandClass = entry.count == null ? "unavailable" : band ? `band-${band.band}` : "";
-  card.className = `card ${bandClass}`.trim();
+  return band ? `band-${band.band}` : "";
+}
+
+function countText(entry) {
+  return entry.count == null ? "—" : String(entry.count);
+}
+
+// A minimized garage: a compact one-line row (the whole row is a button that
+// restores it to a full card). It sits below the full cards, in list order.
+function makeMinimizedCard(entry) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = `card minimized ${bandClassFor(entry)}`.trim();
+  row.dataset.id = entry.id;
+  row.setAttribute("aria-label", `Restore ${entry.name}`);
+
+  const icon = document.createElement("span");
+  icon.className = "restore-icon";
+  icon.textContent = "＋";
+
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = entry.name;
+
+  const count = document.createElement("span");
+  count.className = "count";
+  count.textContent = countText(entry);
+
+  row.append(icon, name, count);
+  row.addEventListener("click", () => restoreCard(entry.id));
+  return row;
+}
+
+function makeCard(entry, { minimized, index, total }) {
+  if (minimized) return makeMinimizedCard(entry);
+
+  const card = document.createElement("div");
+  card.className = `card ${bandClassFor(entry)}`.trim();
+  if (entry.id === expandedId) card.classList.add("expanded");
   card.dataset.id = entry.id;
 
-  const star = document.createElement("button");
-  star.className = "star";
-  star.type = "button";
-  star.textContent = favorited ? "★" : "☆";
-  star.setAttribute(
-    "aria-label",
-    favorited ? `Unfavorite ${entry.name}` : `Favorite ${entry.name}`
-  );
-  star.setAttribute("aria-pressed", String(favorited));
-  star.addEventListener("click", () => toggleFavorite(entry.id));
+  const minimize = document.createElement("button");
+  minimize.className = "minimize";
+  minimize.type = "button";
+  minimize.textContent = "−";
+  minimize.setAttribute("aria-label", `Minimize ${entry.name}`);
+  minimize.addEventListener("click", () => minimizeCard(entry.id));
 
   const name = document.createElement("div");
   name.className = "name";
@@ -172,13 +272,13 @@ function makeCard(entry, favorited, pos) {
 
   const count = document.createElement("div");
   count.className = "count";
-  count.textContent = entry.count == null ? "—" : String(entry.count);
+  count.textContent = countText(entry);
 
   const label = document.createElement("div");
   label.className = "count-label";
   label.textContent = entry.count == null ? "unavailable" : "spots";
 
-  card.append(star, name);
+  card.append(minimize, name);
 
   if (entry.note) {
     const note = document.createElement("div");
@@ -188,6 +288,16 @@ function makeCard(entry, favorited, pos) {
   }
 
   card.append(count, label);
+
+  // Short-term direction from recently-synced samples: filling up, emptying out,
+  // or holding steady right now.
+  const trend = trendByGarage.get(entry.id);
+  if (entry.count != null && trend) {
+    const el = document.createElement("div");
+    el.className = `trend trend-${trend.direction}`;
+    el.textContent = TREND_TEXT[trend.direction];
+    card.append(el);
+  }
 
   // How this count compares to the garage's own history for this day and hour,
   // when there's enough history to say. Otherwise nothing (no guessing).
@@ -199,12 +309,22 @@ function makeCard(entry, favorited, pos) {
     card.append(el);
   }
 
-  // Favorites reorder with up/down arrows in the left corners, disabled at the
-  // ends of the list.
-  if (favorited && pos) {
+  // A forward-looking heads-up ("usually busiest around 6pm"), when the baseline
+  // says today typically tightens later. Null (nothing shown) otherwise.
+  const forecast = forecastLabel(cellsFor(entry.id), new Date());
+  if (forecast) {
+    const el = document.createElement("div");
+    el.className = "forecast";
+    el.textContent = forecast;
+    card.append(el);
+  }
+
+  // Reorder with up/down arrows in the left corners, disabled at the ends of
+  // the active list (only meaningful when there's more than one card).
+  if (total > 1) {
     card.append(
-      makeMove(entry, -1, "▲", "up", pos.index === 0),
-      makeMove(entry, 1, "▼", "down", pos.index === pos.total - 1)
+      makeMove(entry, -1, "▲", "up", index === 0),
+      makeMove(entry, 1, "▼", "down", index === total - 1)
     );
   }
 
@@ -212,10 +332,14 @@ function makeCard(entry, favorited, pos) {
   // corner; unmapped ramps have no known location, so no link.
   if (entry.address) card.append(makeMapLink(entry));
 
-  // Tapping the card body (not the star, map link, or move arrows) opens trends.
+  // When expanded, the trend view mounts into the card below the summary.
+  if (entry.id === expandedId) card.append(graphView.mount(entry));
+
+  // Tapping the card body (not a control or the graph itself) toggles the trend
+  // view open/closed in place.
   card.addEventListener("click", (e) => {
-    if (e.target.closest(".star, .maplink, .move")) return;
-    openGraph(entry);
+    if (e.target.closest(".minimize, .maplink, .move, .graph-view")) return;
+    toggleExpanded(entry.id);
   });
 
   return card;
@@ -228,7 +352,7 @@ function makeMove(entry, delta, glyph, direction, atEnd) {
   btn.textContent = glyph;
   btn.disabled = atEnd;
   btn.setAttribute("aria-label", `Move ${entry.name} ${direction}`);
-  btn.addEventListener("click", () => moveFavorite(entry.id, delta));
+  btn.addEventListener("click", () => moveCard(entry.id, delta));
   return btn;
 }
 
@@ -243,34 +367,44 @@ function makeMapLink(entry) {
   return link;
 }
 
-function toggleFavorite(id) {
-  const i = favoriteOrder.indexOf(id);
-  if (i >= 0) favoriteOrder.splice(i, 1);
-  else favoriteOrder.push(id);
-  saveFavorites(favoriteOrder);
-  render(loadCachedData());
+function minimizeCard(id) {
+  minimizedIds.add(id);
+  saveMinimized();
+  if (expandedId === id) {
+    expandedId = null;
+    graphView.reset();
+  }
+  render(lastData);
+}
+
+function restoreCard(id) {
+  minimizedIds.delete(id);
+  saveMinimized();
+  render(lastData);
 }
 
 // The most recently rendered snapshot, so late-arriving stats can re-render the
 // same data (recoloring cards) without re-reading storage and racing a refresh.
 let lastData = null;
 
-function render(data, { stale = false } = {}) {
+function render(data) {
   lastData = data;
   els.modified.textContent = data && data.modified ? data.modified : "unknown";
 
   const entries = garageEntries(data ? data.vacancies : {});
   const byId = new Map(entries.map((e) => [e.id, e]));
+  reconcileOrder(entries.map((e) => e.id));
 
-  const favEntries = favoriteOrder.map((id) => byId.get(id)).filter(Boolean);
-  const otherEntries = entries.filter((e) => !isFavorite(e.id));
+  const shown = cardOrder.filter((id) => byId.has(id));
+  const active = shown.filter((id) => !minimizedIds.has(id));
+  const minimized = shown.filter((id) => minimizedIds.has(id));
 
-  els.favorites.replaceChildren(
-    ...favEntries.map((e, i) => makeCard(e, true, { index: i, total: favEntries.length }))
+  els.cards.replaceChildren(
+    ...active.map((id, i) =>
+      makeCard(byId.get(id), { minimized: false, index: i, total: active.length })
+    ),
+    ...minimized.map((id) => makeCard(byId.get(id), { minimized: true }))
   );
-  els.favoritesEmpty.hidden = favEntries.length > 0;
-
-  els.others.replaceChildren(...otherEntries.map((e) => makeCard(e, false)));
 }
 
 function setStatus(state) {
@@ -308,6 +442,7 @@ async function refresh() {
     saveData(data);
     render(data);
     setStatus("live");
+    refreshHistory();
   } catch {
     const cached = loadCachedData();
     setStatus(cached ? "stale" : "no-data");
@@ -317,15 +452,20 @@ async function refresh() {
   }
 }
 
-// --- Reorder favorites -------------------------------------------------------
-// Swap a favorite with its neighbor in the given direction (delta -1 up, +1
-// down). The end cards' out-of-range arrow is disabled, so this stays in bounds.
-function moveFavorite(id, delta) {
-  const i = favoriteOrder.indexOf(id);
-  const j = i + delta;
-  if (i < 0 || j < 0 || j >= favoriteOrder.length) return;
-  [favoriteOrder[i], favoriteOrder[j]] = [favoriteOrder[j], favoriteOrder[i]];
-  saveFavorites(favoriteOrder);
+// --- Reorder cards -----------------------------------------------------------
+// Swap an active card with its neighbor in the given direction (delta -1 up, +1
+// down) by swapping their positions in the master order, leaving minimized cards
+// untouched. The end cards' out-of-range arrow is disabled, so this stays in
+// bounds.
+function moveCard(id, delta) {
+  const active = activeIdsNow();
+  const ai = active.indexOf(id);
+  const aj = ai + delta;
+  if (ai < 0 || aj < 0 || aj >= active.length) return;
+  const i = cardOrder.indexOf(id);
+  const j = cardOrder.indexOf(active[aj]);
+  [cardOrder[i], cardOrder[j]] = [cardOrder[j], cardOrder[i]];
+  saveOrder();
   render(lastData);
 }
 
@@ -430,161 +570,45 @@ async function loadStats(ids) {
   if (results.some((r) => r.status === "fulfilled")) render(lastData);
 }
 
-// --- Trend graphs ------------------------------------------------------------
-// Ranges pick a bucket that keeps the point count sane at ~380px: a day of raw
-// 5-min samples, a week/month of hourly aggregates, a year of daily aggregates.
-const fmt = {
-  time: new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" }),
-  weekday: new Intl.DateTimeFormat([], { weekday: "short" }),
-  monthDay: new Intl.DateTimeFormat([], { month: "numeric", day: "numeric" }),
-  month: new Intl.DateTimeFormat([], { month: "short" }),
-};
-const at = (ts) => new Date(ts * 1000);
-
-// baseline: overlay the (day, hour) typical p25–p75 range. Meaningful only when
-// each x-bucket maps to one hour (raw/hourly), so year (daily buckets) instead
-// keeps the actual min/max envelope (band).
-const RANGES = [
-  { key: "day",   label: "Day",   span: DAY_SECONDS,       bucket: "raw",  step: 300,   baseline: true,  band: false, xFormat: (ts) => fmt.time.format(at(ts)) },
-  { key: "week",  label: "Week",  span: 7 * DAY_SECONDS,   bucket: "hour", step: 3600,  baseline: true,  band: false, xFormat: (ts) => fmt.weekday.format(at(ts)) },
-  { key: "month", label: "Month", span: 30 * DAY_SECONDS,  bucket: "hour", step: 3600,  baseline: true,  band: false, xFormat: (ts) => fmt.monthDay.format(at(ts)) },
-  { key: "year",  label: "Year",  span: 365 * DAY_SECONDS, bucket: "day",  step: 86400, baseline: false, band: true,  xFormat: (ts) => fmt.month.format(at(ts)) },
-];
-
-// The typical p25–p75 range and median for each point's (day, hour), from the
-// garage's stats cells, aligned to the series x. Empty when there's no baseline.
-function baselineSeries(points, cells) {
-  if (!cells) return [];
-  const out = [];
-  for (const p of points) {
-    const d = at(p.ts);
-    const cell = cells[cellKey(d.getDay(), d.getHours())];
-    if (cell && cell.n >= MIN_CELL_OBSERVATIONS) {
-      out.push({ ts: p.ts, p25: cell.p25, p50: cell.p50, p75: cell.p75 });
-    }
-  }
-  return out;
+// --- Recent trend ------------------------------------------------------------
+// Derive each shown garage's short-term direction from locally-synced samples,
+// then re-render so the indicators appear/update. Best effort: a garage with too
+// few recent samples shows none.
+async function loadTrends(ids) {
+  if (!historyDb) return;
+  const since = nowSec() - TREND_WINDOW_SECONDS;
+  await Promise.all(
+    ids.map(async (id) => {
+      const trend = computeTrend(await getRecentSamples(historyDb, id, since));
+      if (trend) trendByGarage.set(id, trend);
+      else trendByGarage.delete(id);
+    })
+  );
+  render(lastData);
 }
 
-async function loadSeries(range, garage) {
-  const until = nowSec();
-  const since = until - range.span;
-  if (range.bucket === "raw") {
-    return getRawHistory(historyDb, API_URL, garage, since, until);
-  }
-  return getBucketedHistory(historyDb, API_URL, garage, range.bucket, since, until);
+function shownGarageIds() {
+  return garageEntries(lastData ? lastData.vacancies : {}).map((e) => e.id);
 }
 
-let graphEls = null;
-
-function buildGraphModal() {
-  const overlay = document.createElement("div");
-  overlay.className = "graph-modal";
-  overlay.hidden = true;
-
-  const sheet = document.createElement("div");
-  sheet.className = "graph-sheet";
-
-  const head = document.createElement("div");
-  head.className = "graph-head";
-  const title = document.createElement("span");
-  title.className = "graph-title";
-  const close = document.createElement("button");
-  close.type = "button";
-  close.className = "graph-close";
-  close.textContent = "✕";
-  close.setAttribute("aria-label", "Close");
-  head.append(title, close);
-
-  const tabs = document.createElement("div");
-  tabs.className = "graph-ranges";
-  const rangeButtons = RANGES.map((r) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "graph-range";
-    b.textContent = r.label;
-    b.dataset.key = r.key;
-    tabs.append(b);
-    return b;
-  });
-
-  const body = document.createElement("div");
-  body.className = "graph-body";
-  const status = document.createElement("div");
-  status.className = "graph-status";
-  const legend = document.createElement("div");
-  legend.className = "graph-legend";
-
-  sheet.append(head, tabs, body, status, legend);
-  overlay.append(sheet);
-  document.body.append(overlay);
-
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) closeGraph();
-  });
-  close.addEventListener("click", closeGraph);
-
-  graphEls = { overlay, title, body, status, legend, rangeButtons };
-  return graphEls;
-}
-
-let graphGarage = null;
-
-function closeGraph() {
-  if (graphEls) graphEls.overlay.hidden = true;
-  graphGarage = null;
-}
-
-async function showRange(range) {
-  const { body, status, legend, rangeButtons } = graphEls;
-  for (const b of rangeButtons) {
-    b.classList.toggle("active", b.dataset.key === range.key);
-  }
-  status.textContent = "Loading…";
-  legend.textContent = "";
-  const garage = graphGarage;
+// Keep the local sample cache (and thus the trend indicators) current: top up
+// from the Worker, then recompute trends. A reader concern kept off the
+// live-snapshot path, guarded so overlapping refreshes don't stack syncs.
+let historySyncing = false;
+async function refreshHistory() {
+  if (!historyDb || historySyncing) return;
+  historySyncing = true;
   try {
-    const points = await loadSeries(range, garage);
-    if (graphGarage !== garage) return; // switched garages mid-load
-
-    const cells = statsByGarage.get(garage)?.cells;
-    const baseline = range.baseline ? baselineSeries(points, cells) : null;
-    body.replaceChildren(
-      renderChart(points, {
-        band: range.band,
-        baseline,
-        stepSeconds: range.step,
-        xFormat: range.xFormat,
-      })
-    );
-    status.textContent = points.length ? "" : "No history for this range yet";
-    legend.textContent =
-      baseline && baseline.length
-        ? "line: actual · shaded: typical for this day & time"
-        : "";
+    await syncSamples(historyDb, API_URL);
+    await loadTrends(shownGarageIds());
   } catch {
-    body.replaceChildren();
-    legend.textContent = "";
-    status.textContent = "Couldn't load history";
+    /* offline or Worker down: trends just hold their last values */
+  } finally {
+    historySyncing = false;
   }
-}
-
-function openGraph(entry) {
-  const els = graphEls || buildGraphModal();
-  graphGarage = entry.id;
-  els.title.textContent = entry.name;
-  els.overlay.hidden = false;
-  for (const b of els.rangeButtons) {
-    b.onclick = () => showRange(RANGES.find((r) => r.key === b.dataset.key));
-  }
-  showRange(RANGES[0]);
 }
 
 // --- Lifecycle ---------------------------------------------------------------
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeGraph();
-});
-
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") refresh();
   else stopPolling();
@@ -627,7 +651,7 @@ if ("serviceWorker" in navigator) {
 // Render immediately from cache so the screen is never blank, then fetch fresh.
 const cached = loadCachedData();
 if (cached) {
-  render(cached, { stale: true });
+  render(cached);
   setStatus("stale");
 } else {
   render(null);
@@ -644,9 +668,8 @@ refresh();
   requestPersist();
   const ids = garageEntries(cached ? cached.vacancies : {}).map((e) => e.id);
   loadStats(ids);
-  try {
-    if (historyDb) await syncSamples(historyDb, API_URL);
-  } catch {
-    /* offline or Worker down: graphs fall back to direct fetches */
-  }
+  // Top up the local sample cache and compute the initial trend indicators.
+  // Best effort: offline or Worker-down leaves graphs to fall back to direct
+  // fetches and the cards simply show no trend.
+  await refreshHistory();
 })();

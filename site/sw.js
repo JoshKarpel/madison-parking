@@ -13,6 +13,7 @@ const SHELL = [
   "./history.js",
   "./coloring.js",
   "./chart.js",
+  "./graph.js",
   "./style.css",
   "./manifest.webmanifest",
   "./icons/icon-192.png?v=__ICON_HASH__",

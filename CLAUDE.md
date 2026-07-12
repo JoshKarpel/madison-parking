@@ -59,9 +59,24 @@ timer while the tab is visible (`REFRESH_INTERVAL_MS`, also drives the countdown
 bar/label), `visibilitychange` to visible, and pull-to-refresh. Fetch failure
 keeps showing cached numbers marked stale; never blanks the screen.
 
-Favorites are an **ordered** list of IDs in `localStorage` (`parking:favorites`),
-reordered by the up/down arrows in a favorite card's left corners (`moveFavorite`
-swaps neighbors); the end cards' out-of-range arrow is disabled.
+Cards are one full-width list in a **user-adjustable order** (`parking:order`, an
+ordered list of all IDs), reordered by the up/down arrows in a card's left
+corners (`moveCard` swaps neighbors); the end cards' out-of-range arrow is
+disabled. Any garage can be **minimized** (`parking:minimized`, a set of IDs):
+the `−` button collapses its card to a compact one-line row that drops below the
+full cards, and the row itself is a button that restores it. New feed IDs append
+to the order and render full by default.
+
+Tapping a card body toggles its **trend view inline** in place (tap the header
+again to collapse); at most one is expanded (`expandedId`). The view
+(`site/graph.js`, `createGraphView`) is a factory that mounts a single reusable
+element the app re-appends into the expanded card on each re-render, so the
+selected range and loaded chart survive a background refresh. A short-term
+**trend indicator** per card (filling / emptying / holding steady) comes from
+`computeTrend` over the last `TREND_WINDOW_SECONDS` of locally-synced samples,
+with a *relative* threshold (a fraction of the start/end average, so it scales
+across small lots and large ramps); `refreshHistory` tops up the sample cache
+and recomputes trends off the live-snapshot path.
 
 ## History (collection, API, client cache)
 
@@ -112,8 +127,8 @@ minutes, so a long-open session picks up a deploy without a close/reopen. If you
 touch caching, preserve
 this: changing shell assets without changing `sw.js` means clients keep serving
 stale files. The `SHELL` list must include every ES module the app imports
-(`app.js`, `version.js`, `history.js`, `coloring.js`, `chart.js`, `garages.js`);
-a module missing from it won't be available offline.
+(`app.js`, `version.js`, `history.js`, `coloring.js`, `chart.js`, `graph.js`,
+`garages.js`); a module missing from it won't be available offline.
 
 A second stamp, `__ICON_HASH__`, versions the PWA icon URLs. The icon
 references in `manifest.webmanifest`, `index.html`, and the `sw.js` `SHELL`
@@ -158,15 +173,17 @@ Recipes live in the `justfile` (`just --list`):
 `test/` holds a no-framework harness (`harness.mjs`) run by `test/run.mjs`
 (`just test`), covering the pure logic: the Worker's timestamp/timezone parsing,
 percentiles, cron dispatch and retention (`worker/src/index.js` exports these);
-the client's relative-coloring bands (`site/coloring.js`); and the service
+the client's relative-coloring bands and busiest-hour forecast (`site/coloring.js`),
+the recent-trend classifier (`computeTrend` in `site/history.js`); and the service
 worker's offline fetch fallback (loaded into a `vm` with mocked globals). Only
 functions may be exported from the Worker module besides `default` (the runtime
 treats other named exports as entrypoints), so export helpers, not constants.
 
 For runtime behavior, `node --check` each module, then drive the rendered page
 in headless Chrome. See the `testing-parking-pwa` project memory for the full
-playbook, including CDP driving (open the graph, cycle ranges), testing offline
-against a mock Worker, and exercising the favorite reorder arrows.
+playbook, including CDP driving (expand a card's inline graph, cycle ranges),
+testing offline against a mock Worker, and exercising the reorder and
+minimize/restore controls.
 
 Headless Chrome on this machine needs `--password-store=basic --use-mock-keychain`
 (avoids a GNOME keyring popup) and `--no-sandbox` (WSL); the `just` recipes

@@ -3,6 +3,8 @@ import {
   classify,
   comparisonLabel,
   describeWhen,
+  busiestUpcomingHour,
+  forecastLabel,
   localCell,
   cellKey,
   MIN_CELL_OBSERVATIONS,
@@ -75,4 +77,53 @@ test("localCell / cellKey derive the (dow,hour) key from a date", () => {
   const d = new Date(2026, 6, 4, 20, 0); // Saturday, hour 20
   const { dow, hour } = localCell(d);
   eq(cellKey(dow, hour), "6-20");
+});
+
+// --- forecast ----------------------------------------------------------------
+// A supported cell for a given median availability (busiest = lowest p50). Only
+// n and p50 matter to the forecast; the other percentiles are filler.
+const supported = (p50) => ({ n: 20, p01: 0, p10: 0, p25: 0, p50, p75: 0 });
+
+// Mon Jul 6 2026 (dow=1): typically tightens through the afternoon, loosens by 8pm.
+const mondayCells = {
+  "1-8": supported(90),
+  "1-14": supported(100),
+  "1-15": supported(80),
+  "1-18": supported(30), // busiest
+  "1-20": supported(60),
+};
+
+test("busiestUpcomingHour finds the lowest-median hour still ahead today", () => {
+  const mon2pm = new Date(2026, 6, 6, 14, 0);
+  eq(busiestUpcomingHour(mondayCells, mon2pm), { hour: 18, p50: 30 });
+});
+
+test("busiestUpcomingHour ignores hours already past this afternoon", () => {
+  // At 7pm only 8pm remains ahead; the busier 6pm is behind us.
+  const mon7pm = new Date(2026, 6, 6, 19, 0);
+  eq(busiestUpcomingHour(mondayCells, mon7pm), { hour: 20, p50: 60 });
+});
+
+test("busiestUpcomingHour skips cells without enough support", () => {
+  const thin = { "1-18": { ...supported(30), n: MIN_CELL_OBSERVATIONS - 1 } };
+  eq(busiestUpcomingHour(thin, new Date(2026, 6, 6, 14, 0)), null);
+});
+
+test("forecastLabel names the upcoming busiest hour in wall-clock form", () => {
+  eq(forecastLabel(mondayCells, new Date(2026, 6, 6, 14, 0)), "usually busiest around 6pm");
+});
+
+test("forecastLabel formats a morning peak with am", () => {
+  // A garage that peaks at the morning commute: 8am is the busiest supported
+  // hour, and pre-dawn the current hour has no baseline of its own.
+  const morningPeak = { "1-8": supported(10), "1-9": supported(40) };
+  eq(forecastLabel(morningPeak, new Date(2026, 6, 6, 5, 0)), "usually busiest around 8am");
+});
+
+test("forecastLabel is null once the busiest hour is now or behind us", () => {
+  eq(forecastLabel(mondayCells, new Date(2026, 6, 6, 18, 0)), null);
+});
+
+test("forecastLabel is null with no baseline cells", () => {
+  eq(forecastLabel(null, new Date(2026, 6, 6, 14, 0)), null);
 });

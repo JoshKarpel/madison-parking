@@ -75,3 +75,38 @@ export function comparisonLabel(available, cell, date) {
   }
   return verdict.phrase;
 }
+
+// --- forecast ----------------------------------------------------------------
+// Grounded in the same baseline cells as the coloring: no invented thresholds,
+// only "when is this garage's median availability at its lowest later today".
+
+function formatHour(hour) {
+  const period = hour < 12 ? "am" : "pm";
+  const twelve = hour % 12 === 0 ? 12 : hour % 12;
+  return `${twelve}${period}`;
+}
+
+// The hour later today (from `date`'s hour onward, same day-of-week) when this
+// garage is typically busiest — the lowest median availability among cells with
+// enough support. Returns { hour, p50 } or null. Pure: cells in, result out.
+export function busiestUpcomingHour(cells, date) {
+  if (!cells) return null;
+  const dow = date.getDay();
+  let best = null;
+  for (let hour = date.getHours(); hour <= 23; hour++) {
+    const cell = cells[cellKey(dow, hour)];
+    if (!cell || cell.n < MIN_CELL_OBSERVATIONS) continue;
+    if (best == null || cell.p50 < best.p50) best = { hour, p50: cell.p50 };
+  }
+  return best;
+}
+
+// A forward-looking heads-up like "usually busiest around 6pm", or null.
+// busiestUpcomingHour includes the current hour and breaks ties toward the
+// earliest, so a result strictly later than now is genuinely busier than now —
+// actionable, not a restatement of the current state.
+export function forecastLabel(cells, date) {
+  const busiest = busiestUpcomingHour(cells, date);
+  if (!busiest || busiest.hour <= date.getHours()) return null;
+  return `usually busiest around ${formatHour(busiest.hour)}`;
+}

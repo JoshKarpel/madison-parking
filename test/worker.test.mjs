@@ -33,6 +33,12 @@ test("converts a time just after spring-forward correctly", () => {
   eq(parseFeedModified("March 8, 2026 – 3:30am"), epoch("2026-03-08T08:30:00Z"));
 });
 
+test("converts a time after fall-back correctly", () => {
+  // 2026-11-01: clocks fall 2:00am CDT -> 1:00am CST. 3:30am is unambiguously
+  // CST (UTC-6), well past the repeated 1am hour.
+  eq(parseFeedModified("November 1, 2026 – 3:30am"), epoch("2026-11-01T09:30:00Z"));
+});
+
 test("accepts a plain hyphen separator as well as the en-dash", () => {
   eq(parseFeedModified("July 12, 2026 - 9:00pm"), epoch("2026-07-13T02:00:00Z"));
 });
@@ -91,6 +97,23 @@ test("computeCells pools adjacent hours and summarizes each cell as percentiles"
   eq(cells["3-9"].p01, 10);
   // Hour 8 pools 7 (none), 8, 9 -> [10, 20, 30]; the window clamps at the edge.
   eq(cells["3-8"].n, 3);
+});
+
+test("computeCells pools only within a day, never across the day boundary", () => {
+  // Same clock hour, different days: hour 0 on Wed (dow 3) and hour 23 on Tue
+  // (dow 2). Pooling is (dow, hour±1) clamped to [0,23], so these must not mix.
+  const toCell = (t) => (t === 100 ? { dow: 3, hour: 0 } : { dow: 2, hour: 23 });
+  const rows = [
+    { observed_at: 100, available_spaces: 5 },  // Wed 00:xx
+    { observed_at: 200, available_spaces: 90 },  // Tue 23:xx
+  ];
+  const cells = computeCells(rows, toCell);
+  // Wed hour 0 pools hours 0 and 1 only (no hour -1 wrap into Tue 23).
+  eq(cells["3-0"].n, 1);
+  eq(cells["3-0"].p50, 5);
+  // Tue hour 23 pools hours 22 and 23 only (no hour 24 wrap into Wed 0).
+  eq(cells["2-23"].n, 1);
+  eq(cells["2-23"].p50, 90);
 });
 
 test("retention cutoff is five years before the scheduled instant", () => {

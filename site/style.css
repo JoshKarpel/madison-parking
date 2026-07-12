@@ -156,17 +156,10 @@ h2 {
   margin: 0 0 0.5rem;
 }
 
-.grid {
-  display: grid;
+.cards {
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
-}
-
-.favorites-grid {
-  grid-template-columns: 1fr;
-}
-
-.others-grid {
-  grid-template-columns: repeat(2, 1fr);
 }
 
 .card {
@@ -185,15 +178,18 @@ h2 {
 
 .card .name {
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   color: var(--muted);
   padding: 0 1.5rem;
 }
 
+/* Big, thumb-glanceable numbers on the full cards. */
 .card .count {
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   line-height: 1;
+  font-size: 4rem;
+  margin: 0.25rem 0;
 }
 
 .card .count-label {
@@ -211,24 +207,37 @@ h2 {
   padding: 0 1.5rem;
 }
 
-/* Favorites: big, thumb-glanceable numbers. */
-.favorites-grid .count {
-  font-size: 4rem;
-  margin: 0.25rem 0;
+/* Minimized: a compact one-line row (name + count), the whole row a restore
+   button. Quiet — the band colour survives only on the number. */
+.card.minimized {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.9rem;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  background: var(--surface);
+  border-color: var(--border);
 }
 
-.favorites-grid .name {
-  font-size: 1.1rem;
+.card.minimized .restore-icon {
+  color: var(--muted);
+  font-size: 1rem;
 }
 
-/* Others: compact. */
-.others-grid .card {
-  padding: 0.75rem;
+.card.minimized .name {
+  flex: 1;
+  padding: 0;
+  font-size: 0.95rem;
+  color: var(--text);
+  text-align: left;
 }
 
-.others-grid .count {
-  font-size: 2.25rem;
-  margin: 0.15rem 0;
+.card.minimized .count {
+  font-size: 1.4rem;
+  margin: 0;
 }
 
 /* Relative bands: how the current count compares to this garage's own history
@@ -279,17 +288,43 @@ h2 {
   padding: 0 1.5rem;
 }
 
+/* Short-term direction. Filling up (losing spots) reads as a warning colour;
+   emptying out (gaining spots) as a positive one. */
+.card .trend {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.card .trend-filling {
+  color: var(--amber);
+}
+.card .trend-emptying {
+  color: var(--green);
+}
+.card .trend-steady {
+  color: var(--muted);
+}
+
+/* Forward-looking heads-up; quieter than the current-state lines above it. */
+.card .forecast {
+  margin-top: 0.1rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+  padding: 0 1.5rem;
+}
+
 .card {
   cursor: pointer;
 }
 
-.star {
+.minimize {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
   background: none;
   border: none;
-  color: var(--star);
+  color: var(--muted);
   font-size: 1.5rem;
   line-height: 1;
   padding: 0.25rem;
@@ -354,51 +389,17 @@ footer a {
   text-decoration: underline;
 }
 
-/* --- Trend graph modal ---------------------------------------------------- */
-.graph-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.graph-modal[hidden] {
-  display: none;
-}
-
-.graph-sheet {
+/* --- Inline trend view ---------------------------------------------------- */
+/* The view a card expands into in place. Full width within the card, below the
+   count summary. */
+.graph-view {
   width: 100%;
-  max-width: 520px;
-  background: var(--surface);
-  border-radius: 1rem 1rem 0 0;
-  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.3);
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
 }
 
-.graph-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-}
-
-.graph-title {
-  font-weight: 700;
-  font-size: 1.1rem;
-}
-
-.graph-close {
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 1.25rem;
-  line-height: 1;
-  padding: 0.25rem;
-  min-width: 44px;
-  min-height: 44px;
+.card.expanded {
   cursor: pointer;
 }
 

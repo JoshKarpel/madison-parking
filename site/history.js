@@ -243,6 +243,35 @@ export async function getBucketedHistory(db, apiUrl, garage, kind, since, until)
   }
 }
 
+// --- recent trend ------------------------------------------------------------
+
+// One garage's locally-cached raw samples from `since` up to now, ascending by
+// ts. Empty if the db is unavailable or the window holds nothing. Points are
+// {ts, avg}. Reads only what's already synced — no network — so it's cheap to
+// call per garage on every render.
+export async function getRecentSamples(db, garage, since) {
+  if (!db) return [];
+  return getRawRange(db, garage, since, nowSec() + 1);
+}
+
+// Direction of change in availability across a window of samples. A positive
+// delta means spots are opening up (emptying); negative means they're
+// disappearing (filling up). The steady band is relative, not a fixed count, so
+// it scales across a 20-spot lot and a 500-spot ramp alike: a change within
+// `fraction` of the start/end average reads as steady. Returns null when there
+// aren't two samples to compare. Pure: samples in, verdict out.
+export function computeTrend(samples, fraction = 0.1) {
+  if (!samples || samples.length < 2) return null;
+  const first = samples[0].avg;
+  const last = samples[samples.length - 1].avg;
+  const delta = last - first;
+  const average = (first + last) / 2;
+  if (average === 0 || Math.abs(delta) <= fraction * average) {
+    return { direction: "steady", delta };
+  }
+  return { direction: delta > 0 ? "emptying" : "filling", delta };
+}
+
 // Raw samples for a garage/range. Prefers the local store; falls back to the
 // Worker's raw endpoint if the db is empty or unavailable. Points are {ts, avg}.
 export async function getRawHistory(db, apiUrl, garage, since, until) {
