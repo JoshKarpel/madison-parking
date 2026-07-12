@@ -106,7 +106,10 @@ is the single build stamp: `sw.js` holds its own copy (its `CACHE_VERSION`) and
 rewrites the token to the commit SHA in *every* file that carries it (the
 `grep -rl __BUILD_ID__ site | xargs sed` step in `deploy.yml`), so every deploy
 installs a fresh worker + shell cache. `app.js` reloads once on
-`controllerchange` to apply the update live. If you touch caching, preserve
+`controllerchange` to apply the update live, and re-checks for a new worker
+(`registration.update()`) when the tab is refocused, throttled to once every 30
+minutes, so a long-open session picks up a deploy without a close/reopen. If you
+touch caching, preserve
 this: changing shell assets without changing `sw.js` means clients keep serving
 stale files. The `SHELL` list must include every ES module the app imports
 (`app.js`, `version.js`, `history.js`, `coloring.js`, `chart.js`, `garages.js`);

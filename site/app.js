@@ -601,8 +601,26 @@ if ("serviceWorker" in navigator) {
     reloading = true;
     location.reload();
   });
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js");
+
+  let swRegistration = null;
+  window.addEventListener("load", async () => {
+    swRegistration = await navigator.serviceWorker.register("./sw.js");
+  });
+
+  // Registration only checks for a new worker once, so a long-open session
+  // wouldn't notice a deploy until it was closed and reopened. Re-check when the
+  // tab is refocused, throttled so quick focus toggles don't each hit the
+  // network: a no-op update() is one small conditional GET of sw.js, and a
+  // changed worker installs and triggers the controllerchange reload above. This
+  // is a control-plane concern, kept off the 60s data-refresh path.
+  const UPDATE_CHECK_MIN_INTERVAL_MS = 30 * 60_000;
+  let lastUpdateCheck = 0;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !swRegistration) return;
+    const now = Date.now();
+    if (now - lastUpdateCheck < UPDATE_CHECK_MIN_INTERVAL_MS) return;
+    lastUpdateCheck = now;
+    swRegistration.update().catch(() => {});
   });
 }
 
