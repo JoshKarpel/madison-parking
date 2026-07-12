@@ -68,9 +68,11 @@ test("local cell resolver reports Central day/hour across the UTC date line", ()
 
 // --- retention prune gating --------------------------------------------------
 
-test("the weekly cron maintains and every other cron collects", () => {
-  eq(cronAction("30 4 * * 0"), "maintain");
+test("the every-minute cron collects and any other cron maintains", () => {
   eq(cronAction("* * * * *"), "collect");
+  eq(cronAction("30 4 * * SUN"), "maintain");
+  // Robust to however Cloudflare echoes the weekly cron back (SUN, 1, ...).
+  eq(cronAction("30 4 * * 1"), "maintain");
 });
 
 test("computeCells pools adjacent hours and summarizes each cell as percentiles", () => {

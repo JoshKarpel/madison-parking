@@ -3,14 +3,22 @@ main = "src/index.js"
 compatibility_date = "2026-07-11"
 workers_dev = true
 
+# Workers Logs: capture console output (incl. cron collect/prune/rebuild) and
+# per-invocation logs, queryable in the dashboard.
+[observability.logs]
+enabled = true
+invocation_logs = true
+
 # Two cron rates, dispatched by event.cron in the scheduled handler:
 #   "* * * * *" — poll the feed every minute. It only refreshes every few
 #     minutes, but sampling faster never misses an update, and feed-derived
 #     timestamps + INSERT OR IGNORE make the extra polls idempotent no-ops.
-#   "30 4 * * 0" — weekly maintenance (Sun 04:30 UTC, off-peak): prune
+#   "30 4 * * SUN" — weekly maintenance (Sun 04:30 UTC, off-peak): prune
 #     past-retention samples and rebuild the /stats baselines from all history.
+#     Cloudflare's weekday field is 1-7 (1=Sunday), not Unix's 0-6, so a bare "0"
+#     is out of range and rejected with 400; the SUN abbreviation avoids that.
 [triggers]
-crons = ["* * * * *", "30 4 * * 0"]
+crons = ["* * * * *", "30 4 * * SUN"]
 
 # History store. Create the remote database once with
 #   wrangler d1 create madison-parking

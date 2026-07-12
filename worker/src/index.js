@@ -139,14 +139,16 @@ async function collectSample(env) {
   );
 }
 
-// The weekly cron carries maintenance (prune + stats rebuild); every other tick
-// just collects. Weekly, not daily: the rebuild scans all retained history per
-// garage (millions of rows at steady state), and a multi-year baseline changes
-// negligibly week to week, so a weekly scan stays comfortably inside D1's
-// free-tier read budget. Must match the second entry in wrangler.toml's crons.
-const MAINTENANCE_CRON = "30 4 * * 0";
+// The every-minute cron collects; the (weekly) other cron does maintenance
+// (prune + stats rebuild). Weekly, not daily: the rebuild scans all retained
+// history per garage (millions of rows at steady state), and a multi-year
+// baseline changes negligibly week to week, so a weekly scan stays comfortably
+// inside D1's free-tier read budget. Dispatch on the collect cron, which is the
+// unambiguous "* * * * *": anything else is maintenance, so this is robust to
+// how Cloudflare echoes the weekly cron back in event.cron (e.g. SUN vs 1).
+const COLLECT_CRON = "* * * * *";
 function cronAction(cron) {
-  return cron === MAINTENANCE_CRON ? "maintain" : "collect";
+  return cron === COLLECT_CRON ? "collect" : "maintain";
 }
 
 function retentionCutoffSec(scheduledTimeMs) {
