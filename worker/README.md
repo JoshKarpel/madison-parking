@@ -124,14 +124,19 @@ You need a (free) Cloudflare account. No `wrangler.toml` edits are required.
 The GitHub Actions workflow (`.github/workflows/deploy.yml`) deploys this Worker
 on every push to `main`, alongside the static site. It needs one repo secret:
 
-1. Create a Cloudflare API token with the **Edit Cloudflare Workers** template:
-   Cloudflare dashboard → **My Profile → API Tokens → Create Token → Edit
-   Cloudflare Workers**.
-2. Add it to the repo: **Settings → Secrets and variables → Actions → New
+1. Create a Cloudflare API token starting from the **Edit Cloudflare Workers**
+   template: Cloudflare dashboard → **My Profile → API Tokens → Create Token →
+   Edit Cloudflare Workers**.
+2. **Add a D1 permission before creating it.** That template does *not* include
+   D1, but this Worker binds a D1 database and the deploy applies D1 migrations,
+   so under **Permissions** add a row: **Account → D1 → Edit**. Without it the
+   deploy fails with `code: 7403` ("not authorized to access this service"). An
+   existing token can be edited to add the row instead of recreating it.
+3. Add the token to the repo: **Settings → Secrets and variables → Actions → New
    repository secret**, named `CLOUDFLARE_API_TOKEN`.
 
-Push to `main` and the `deploy-worker` job runs `wrangler deploy`. Its log prints
-the deployed `*.workers.dev` URL (see below).
+Push to `main` and the `deploy-worker` job applies any new migrations and runs
+`wrangler deploy`. Its log prints the deployed `*.workers.dev` URL (see below).
 
 ### From your machine (first deploy / local testing)
 

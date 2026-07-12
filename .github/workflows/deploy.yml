@@ -59,8 +59,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7.0.0
 
-      # Requires a repo secret CLOUDFLARE_API_TOKEN with the "Edit Cloudflare
-      # Workers" permission (includes D1). See worker/README.md.
+      # Requires a repo secret CLOUDFLARE_API_TOKEN. The "Edit Cloudflare
+      # Workers" template is NOT enough on its own: the token also needs an
+      # "Account > D1 > Edit" permission, both to apply the migrations below and
+      # because the Worker binds a D1 database. Missing it fails with code 7403.
+      # See worker/README.md.
       #
       # preCommands applies any new D1 migrations before the deploy. It's
       # idempotent: wrangler tracks applied migrations in d1_migrations and skips
