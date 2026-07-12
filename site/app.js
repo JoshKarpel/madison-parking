@@ -92,6 +92,7 @@ const els = {
   cards: document.getElementById("cards"),
   refreshIndicator: document.getElementById("refresh-indicator"),
   statsStatus: document.getElementById("stats-status"),
+  installHint: document.getElementById("install-hint"),
   buildStamp: document.getElementById("build-stamp"),
   cacheSize: document.getElementById("cache-size"),
   resetData: document.getElementById("reset-data"),
@@ -774,6 +775,39 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") refresh();
   else stopPolling();
 });
+
+// --- Install hint ------------------------------------------------------------
+// On a phone browser that isn't already the installed PWA, nudge the user to
+// install it (full-screen, home-screen launch). Hidden by default in the markup
+// so a non-phone or already-installed context never flashes it.
+function isStandalone() {
+  return (
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true
+  );
+}
+
+// The phone platform, or null on anything that isn't a phone. iOS reaches "Add
+// to Home Screen" through Safari's Share button (no true emoji for it, so 📤
+// stands in); Android installs from the browser's overflow menu.
+function phonePlatform() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPod/i.test(ua)) return "ios";
+  if (/Android/i.test(ua)) return "android";
+  return null;
+}
+
+const INSTALL_HINT_TEXT = {
+  ios: "📲 Tip: install this as an app for full-screen, one-tap access — tap the Share button (📤), then “Add to Home Screen”.",
+  android:
+    "📲 Tip: install this as an app for full-screen, one-tap access — open your browser menu and choose “Install app” (or “Add to Home screen”).",
+};
+
+const platform = phonePlatform();
+if (platform && !isStandalone()) {
+  els.installHint.textContent = INSTALL_HINT_TEXT[platform];
+  els.installHint.hidden = false;
+}
 
 // --- Debug menu --------------------------------------------------------------
 // The build stamp identifies which deploy this client is actually running, so a
