@@ -13,7 +13,14 @@ import {
   DAY_SECONDS,
 } from "./history.js";
 import { BUILD_ID } from "./version.js";
-import { classify, comparisonLabel, forecastLabel, localCell, cellKey } from "./coloring.js";
+import {
+  classifyFullness,
+  occupancyPercent,
+  comparisonLabel,
+  forecastLabel,
+  localCell,
+  cellKey,
+} from "./coloring.js";
 import { createGraphView } from "./graph.js";
 
 const DEFAULT_API_URL = "https://madison-parking.josh-karpel.workers.dev";
@@ -185,6 +192,13 @@ function cellsFor(id) {
   return stats && stats.cells ? stats.cells : null;
 }
 
+// A garage's estimated total capacity, or null until stats have loaded (or if the
+// Worker has no estimate for it yet). Drives the fullness color and "% full".
+function capacityFor(id) {
+  const stats = statsByGarage.get(id);
+  return stats && typeof stats.capacity === "number" ? stats.capacity : null;
+}
+
 // The (day_of_week, hour) baseline cell that applies to a garage right now.
 function currentCell(id) {
   const cells = cellsFor(id);
@@ -193,10 +207,11 @@ function currentCell(id) {
   return cells[cellKey(dow, hour)] || null;
 }
 
-// Relative color band for a count, or null when there's no basis to judge (no
-// count, no stats yet, or too little history for this cell). Null => uncolored.
+// The headline color band: how full the garage is against its estimated capacity
+// ("could I park here right now?"). Null when there's no count or no capacity
+// estimate yet, which renders the card uncolored.
 function bandFor(count, id) {
-  return classify(count, currentCell(id));
+  return classifyFullness(count, capacityFor(id));
 }
 
 // Union of the garages we know about and whatever the response contains, so an
@@ -309,6 +324,18 @@ function makeCard(entry, { minimized, index, total }) {
   }
 
   summary.append(count, label);
+
+  // Estimated fullness against the garage's high-water capacity estimate — the
+  // headline "could I park here?" figure. Labeled an estimate; absent (like the
+  // color) until a capacity estimate exists for this garage.
+  const occupancy = occupancyPercent(entry.count, capacityFor(entry.id));
+  if (occupancy != null) {
+    card.style.setProperty("--fill", `${occupancy}%`);
+    const el = document.createElement("div");
+    el.className = "fullness";
+    el.textContent = `≈${occupancy}% full (est.)`;
+    summary.append(el);
+  }
 
   // Short-term direction from recently-synced samples: filling up, emptying out,
   // or holding steady right now.

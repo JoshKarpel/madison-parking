@@ -176,7 +176,13 @@ h2 {
 
 .card {
   position: relative;
-  background: var(--surface);
+  /* Filled from the left to --fill (an occupancy %, set per card) with the band's
+     tint, to show fullness at a glance; plain surface when there's no estimate. */
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--band-color, transparent) 20%, var(--surface)) 0 var(--fill, 0%),
+    var(--surface) var(--fill, 0%) 100%
+  );
   border: 1px solid var(--border);
   border-radius: 1rem;
   display: flex;
@@ -264,45 +270,44 @@ h2 {
   margin: 0;
 }
 
-/* Relative bands: how the current count compares to this garage's own history
-   for this day-and-hour. Resolution is at the scarce end: packed (event-level,
-   filled red) and much-fuller read warm, typical is a calm blue, and everything
-   comfortably open is one green "plenty" band. Too little history stays
-   uncolored. */
-.card.band-packed .count {
-  color: var(--red);
-}
-.card.band-full .count {
-  color: var(--red);
-}
-.card.band-busy .count {
-  color: var(--amber);
-}
-.card.band-typical .count {
-  color: var(--blue);
-}
-.card.band-open .count {
-  color: var(--green);
+/* Fullness bands (fullest -> emptiest): how full the garage is against its
+   estimated capacity ("could I park here right now?"). Each band sets --band-color
+   (the tint the background fills with, and the count color) and the border color:
+   red when there's little to no room, amber filling up, a calm blue with space,
+   green with plenty. A garage with no capacity estimate yet gets no band and stays
+   plain. */
+.card.band-none { --band-color: var(--red); }
+.card.band-sliver { --band-color: var(--red); }
+.card.band-handful { --band-color: var(--amber); }
+.card.band-room { --band-color: var(--blue); }
+.card.band-plenty { --band-color: var(--green); }
+
+.card.band-none .count,
+.card.band-sliver .count,
+.card.band-handful .count,
+.card.band-room .count,
+.card.band-plenty .count {
+  color: var(--band-color);
 }
 .card.unavailable .count {
   color: var(--muted);
 }
 
-.card.band-packed {
-  border-color: var(--red);
-  background: var(--red-bg);
+.card.band-none,
+.card.band-sliver,
+.card.band-handful,
+.card.band-room,
+.card.band-plenty {
+  border-color: var(--band-color);
 }
-.card.band-full {
-  border-color: var(--red);
-}
-.card.band-busy {
-  border-color: var(--amber);
-}
-.card.band-typical {
-  border-color: var(--blue);
-}
-.card.band-open {
-  border-color: var(--green);
+
+/* The headline fullness estimate under the count; the card's band color carries
+   the at-a-glance read, this gives the number. */
+.card .fullness {
+  margin-top: 0.1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .card .comparison {

@@ -5,6 +5,7 @@ import {
   makeLocalCellResolver,
   percentile,
   computeCells,
+  estimateCapacity,
   cronAction,
   retentionCutoffSec,
   safeEqual,
@@ -143,6 +144,32 @@ test("percentiles are monotonic on noisy data", () => {
   const p50 = percentile(s, 0.5);
   const p90 = percentile(s, 0.9);
   ok(p10 <= p50 && p50 <= p90, `expected p10<=p50<=p90, got ${p10},${p50},${p90}`);
+});
+
+// --- capacity estimate -------------------------------------------------------
+
+test("estimateCapacity takes a high-water mark of availability within the window", () => {
+  const rows = [
+    { observed_at: 100, available_spaces: 500 },
+    { observed_at: 120, available_spaces: 400 },
+    { observed_at: 140, available_spaces: 480 },
+  ];
+  // p99 of [400, 480, 500] rounds to the high end (near the emptiest observed).
+  eq(estimateCapacity(rows, 90), 500);
+});
+
+test("estimateCapacity ignores samples older than the window (e.g. a past glitch)", () => {
+  const rows = [
+    { observed_at: 50, available_spaces: 9999 }, // before the cutoff — excluded
+    { observed_at: 100, available_spaces: 300 },
+    { observed_at: 140, available_spaces: 350 },
+  ];
+  eq(estimateCapacity(rows, 90), 350);
+});
+
+test("estimateCapacity is null when the window holds no samples", () => {
+  const rows = [{ observed_at: 10, available_spaces: 200 }];
+  eq(estimateCapacity(rows, 500), null);
 });
 
 // --- admin token compare -----------------------------------------------------

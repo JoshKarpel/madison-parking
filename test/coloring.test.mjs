@@ -1,6 +1,8 @@
 import { test, eq } from "./harness.mjs";
 import {
   classify,
+  classifyFullness,
+  occupancyPercent,
   comparisonLabel,
   describeWhen,
   busiestUpcomingHour,
@@ -10,35 +12,72 @@ import {
   MIN_CELL_OBSERVATIONS,
 } from "../site/coloring.js";
 
+// --- headline: fullness vs estimated capacity --------------------------------
+
+test("classifyFullness reads a near-empty garage as plenty of room", () => {
+  // 450 of an estimated 600 open = 75% open, well above every fuller threshold.
+  eq(classifyFullness(450, 600), { band: "plenty", phrase: "plenty of room" });
+});
+
+test("classifyFullness bands scale with the estimated capacity, not raw count", () => {
+  // 12 open reads as no room against a 600 total (2% open) but plenty against a
+  // small 30-space lot (40% open).
+  eq(classifyFullness(12, 600).band, "none");
+  eq(classifyFullness(12, 30).band, "plenty");
+});
+
+test("classifyFullness walks the fraction thresholds", () => {
+  eq(classifyFullness(2, 100).band, "none"); // 2% open
+  eq(classifyFullness(6, 100).band, "sliver"); // 6% open
+  eq(classifyFullness(12, 100).band, "handful"); // 12% open
+  eq(classifyFullness(25, 100).band, "room"); // 25% open
+  eq(classifyFullness(40, 100).band, "plenty"); // 40% open
+});
+
+test("classifyFullness returns null without a count or a capacity estimate", () => {
+  eq(classifyFullness(null, 600), null);
+  eq(classifyFullness(300, null), null);
+  eq(classifyFullness(300, 0), null);
+});
+
+test("occupancyPercent is the occupied share, rounded and clamped", () => {
+  eq(occupancyPercent(150, 600), 75); // (600-150)/600
+  eq(occupancyPercent(0, 480), 100); // full
+  eq(occupancyPercent(500, 480), 0); // count above the estimate clamps, not negative
+  eq(occupancyPercent(200, null), null);
+});
+
+// --- tidbit: unusual for this (day, hour)? -----------------------------------
+
 // A well-populated cell: 60 obs, spread from a packed p01 up to p75.
 const cell = { n: 60, p01: 20, p10: 60, p25: 90, p50: 130, p75: 170 };
 
-test("classifies availability at or below p01 as packed", () => {
-  eq(classify(15, cell), { band: "packed", phrase: "packed — barely any spots" });
+test("classifies availability at or below p01 as far busier than usual", () => {
+  eq(classify(15, cell), { band: "lowest", phrase: "far busier than usual" });
 });
 
-test("classifies availability between p01 and p10 as much fuller than usual", () => {
-  eq(classify(45, cell), { band: "full", phrase: "much fuller than usual" });
+test("classifies availability between p01 and p10 as busier than usual", () => {
+  eq(classify(45, cell), { band: "low", phrase: "busier than usual" });
 });
 
-test("classifies availability between p10 and p25 as busier than usual", () => {
-  eq(classify(75, cell), { band: "busy", phrase: "busier than usual" });
+test("classifies availability between p10 and p25 as a bit busier than usual", () => {
+  eq(classify(75, cell), { band: "below", phrase: "a bit busier than usual" });
 });
 
-test("classifies availability in the p25..p75 middle as typical", () => {
-  eq(classify(130, cell), { band: "typical", phrase: "typical" });
+test("classifies availability in the p25..p75 middle as about typical", () => {
+  eq(classify(130, cell), { band: "usual", phrase: "about typical" });
 });
 
-test("collapses everything above p75 into a single plenty-of-room band", () => {
-  eq(classify(180, cell), { band: "open", phrase: "plenty of room" });
-  eq(classify(9999, cell), { band: "open", phrase: "plenty of room" });
+test("collapses everything above p75 into a single quieter-than-usual band", () => {
+  eq(classify(180, cell), { band: "high", phrase: "quieter than usual" });
+  eq(classify(9999, cell), { band: "high", phrase: "quieter than usual" });
 });
 
 test("band boundaries are inclusive at each upper percentile", () => {
-  eq(classify(cell.p01, cell).band, "packed");
-  eq(classify(cell.p10, cell).band, "full");
-  eq(classify(cell.p25, cell).band, "busy");
-  eq(classify(cell.p75, cell).band, "typical");
+  eq(classify(cell.p01, cell).band, "lowest");
+  eq(classify(cell.p10, cell).band, "low");
+  eq(classify(cell.p25, cell).band, "below");
+  eq(classify(cell.p75, cell).band, "usual");
 });
 
 test("returns null when the cell has too few observations", () => {
@@ -53,14 +92,14 @@ test("returns null for a missing cell or missing availability", () => {
 
 // --- human-facing labels -----------------------------------------------------
 
-test("typical verdict includes the day-and-daypart context", () => {
+test("a typical count reads as about typical for the day-and-daypart", () => {
   const sat8pm = new Date(2026, 6, 4, 20, 0); // Sat Jul 4 2026, 8pm local
-  eq(comparisonLabel(130, cell, sat8pm), "typical for a Saturday evening");
+  eq(comparisonLabel(130, cell, sat8pm), "about typical for a Saturday evening");
 });
 
-test("non-typical verdict is a bare comparative with no day context", () => {
+test("a fuller-than-usual count reads as busier than usual for the slot", () => {
   const sat8pm = new Date(2026, 6, 4, 20, 0);
-  eq(comparisonLabel(45, cell, sat8pm), "much fuller than usual");
+  eq(comparisonLabel(45, cell, sat8pm), "busier than usual for a Saturday evening");
 });
 
 test("comparisonLabel returns null when there's no verdict", () => {

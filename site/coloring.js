@@ -1,23 +1,50 @@
-// Relative coloring: where does a garage's current availability sit against its
-// own history for this day-of-week and hour? Pure functions, no DOM, no I/O —
-// tested directly in test/coloring.test.mjs.
+// Two independent signals about a garage, both pure (no DOM, no I/O) and tested
+// in test/coloring.test.mjs:
 //
-// There is deliberately no absolute-threshold fallback. If a cell hasn't been
-// observed enough, we return null and the caller renders the count uncolored
-// with no comparison claim, rather than guessing.
+// 1. Headline — "could I park here right now?": how full the garage is against an
+//    ESTIMATE of its total capacity (the Worker derives capacity as a high-water
+//    mark of availability; there is no real capacity figure in the feed). Drives
+//    the card color and the "≈N% full" readout.
+// 2. Tidbit — "is this unusual for the time?": where the current count sits in the
+//    garage's own history for this (day_of_week, hour). A small comparative line
+//    for spotting out-of-the-ordinary conditions, deliberately NOT the color.
 
 export const MIN_CELL_OBSERVATIONS = 4;
 
-// Band keys map to CSS classes (see style.css). Ordered fullest -> emptiest.
-// Resolution is concentrated at the scarce end (what someone checking parking
-// cares about); everything comfortably open collapses into one "plenty" band.
-export const BANDS = {
-  packed: { phrase: "packed — barely any spots" },
-  full: { phrase: "much fuller than usual" },
-  busy: { phrase: "busier than usual" },
-  typical: { phrase: "typical" },
-  open: { phrase: "plenty of room" },
-};
+// --- headline: fullness vs estimated capacity --------------------------------
+
+// Bands are named for how much parking is left (nouns, fullest -> emptiest), and
+// map to CSS classes (see style.css). Thresholds are on the fraction of the
+// (estimated) capacity still open, so a single set holds across a 20-space lot
+// and a 600-space ramp alike. Tune here.
+const FULLNESS_BANDS = [
+  { band: "none",    maxOpen: 0.03, phrase: "essentially full" },
+  { band: "sliver",  maxOpen: 0.08, phrase: "nearly full" },
+  { band: "handful", maxOpen: 0.15, phrase: "filling up" },
+  { band: "room",    maxOpen: 0.3,  phrase: "space available" },
+  { band: "plenty",  maxOpen: Infinity, phrase: "plenty of room" },
+];
+
+// Classify how full a garage is against its estimated capacity. `available` is
+// spaces open now; `capacity` is the estimated total. Returns { band, phrase } or
+// null when there's no basis (no count, or no capacity estimate yet).
+export function classifyFullness(available, capacity) {
+  if (available == null || !capacity || capacity <= 0) return null;
+  const openFraction = available / capacity;
+  const bucket = FULLNESS_BANDS.find((b) => openFraction <= b.maxOpen);
+  return { band: bucket.band, phrase: bucket.phrase };
+}
+
+// Estimated share of the garage occupied right now (0..100), or null when the
+// inputs don't support it. Clamped: a live count can momentarily exceed the
+// trailing-window capacity estimate, which would otherwise read as negative.
+export function occupancyPercent(available, capacity) {
+  if (available == null || !capacity || capacity <= 0) return null;
+  const pct = Math.round(((capacity - available) / capacity) * 100);
+  return Math.max(0, Math.min(100, pct));
+}
+
+// --- tidbit: unusual for this (day, hour)? -----------------------------------
 
 export function cellKey(dow, hour) {
   return `${dow}-${hour}`;
@@ -29,8 +56,19 @@ export function localCell(date) {
   return { dow: date.getDay(), hour: date.getHours() };
 }
 
+// Bands name where availability sits in this cell's own history (lowest -> high),
+// which is a comparative/statistical position, not a fullness. Fewer spaces than
+// usual for this slot reads as busier than usual.
+const SLOT_BANDS = {
+  lowest: "far busier than usual",
+  low: "busier than usual",
+  below: "a bit busier than usual",
+  usual: "about typical",
+  high: "quieter than usual",
+};
+
 // Classify `available` against a stats cell {n, p01, p10, p25, p50, p75}.
-// Returns { band, phrase } or null when there isn't enough history to judge.
+// Returns { band, phrase } (comparative) or null when there isn't enough history.
 // Percentiles are of available spaces, so lower `available` is a fuller garage.
 export function classify(available, cell) {
   if (available == null) return null;
@@ -38,13 +76,13 @@ export function classify(available, cell) {
 
   const { p01, p10, p25, p75 } = cell;
   let band;
-  if (available <= p01) band = "packed";
-  else if (available <= p10) band = "full";
-  else if (available <= p25) band = "busy";
-  else if (available <= p75) band = "typical";
-  else band = "open";
+  if (available <= p01) band = "lowest";
+  else if (available <= p10) band = "low";
+  else if (available <= p25) band = "below";
+  else if (available <= p75) band = "usual";
+  else band = "high";
 
-  return { band, phrase: BANDS[band].phrase };
+  return { band, phrase: SLOT_BANDS[band] };
 }
 
 const WEEKDAYS = [
@@ -59,26 +97,22 @@ function dayPart(hour) {
   return "night";
 }
 
-// "a Saturday evening" — the human context a "typical" verdict refers to.
+// "a Saturday evening" — the human context a comparison refers to.
 export function describeWhen(date) {
   return `a ${WEEKDAYS[date.getDay()]} ${dayPart(date.getHours())}`;
 }
 
-// The full comparison line under a count, e.g.
-//   "typical for a Saturday evening"  |  "much fuller than usual"
-// Returns null when there's no verdict (caller shows nothing).
+// The comparative slot line, e.g. "busier than usual for a Saturday evening".
+// Null when there isn't enough history to say.
 export function comparisonLabel(available, cell, date) {
   const verdict = classify(available, cell);
   if (!verdict) return null;
-  if (verdict.band === "typical") {
-    return `typical for ${describeWhen(date)}`;
-  }
-  return verdict.phrase;
+  return `${verdict.phrase} for ${describeWhen(date)}`;
 }
 
 // --- forecast ----------------------------------------------------------------
-// Grounded in the same baseline cells as the coloring: no invented thresholds,
-// only "when is this garage's median availability at its lowest later today".
+// Grounded in the same baseline cells: no invented thresholds, only "when is this
+// garage's median availability at its lowest later today".
 
 function formatHour(hour) {
   const period = hour < 12 ? "am" : "pm";

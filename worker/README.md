@@ -7,8 +7,10 @@ caches the upstream response at the edge for 60s so we don't hammer the city.
 ## What it does
 
 - `GET /` → fetches
-  `https://www.cityofmadison.com/parking/data/ramp-availability.json`,
-  returns it verbatim with:
+  `https://www.cityofmadison.com/parking/data/ramp-availability.json` and returns
+  its `modified` + `vacancies` plus an added `observed_at` (the `modified` string
+  parsed to a UTC epoch, for the client's localized "Updated" line and "N minutes
+  ago"), with:
   - `Access-Control-Allow-Origin: *`
   - `Cache-Control: public, max-age=30`
 - Caches upstream at the edge for 60s (`cf: { cacheTtl: 60 }`).
@@ -16,7 +18,9 @@ caches the upstream response at the edge for 60s so we don't hammer the city.
 - Handles `OPTIONS` preflight.
 
 Beyond the live snapshot it records history into a D1 database and serves it
-back for the trend graphs and relative coloring.
+back for the trend graphs, the fullness coloring ("could I park here right
+now?"), and a secondary slot-comparison tidbit ("busier than usual for this
+day and hour").
 
 ## History collection
 
@@ -30,12 +34,12 @@ Two [cron triggers](https://developers.cloudflare.com/workers/configuration/cron
   `INSERT OR IGNORE` drops a sample whose timestamp we already stored. Polling
   faster than the feed refreshes means we never miss an update, idempotently.
 - `30 4 * * SUN` (weekly, Sunday) does maintenance off the request path: prune
-  samples older than the retention window (5 years), then rebuild the `/stats`
-  baselines into `stats_cells`. Weekly, not daily, because the rebuild scans all
-  retained history per garage; a multi-year baseline barely moves week to week,
-  so this stays well inside D1's free-tier read budget. (Cloudflare's weekday
-  field is 1-7 with 1=Sunday, not Unix's 0-6, so `SUN` avoids an out-of-range
-  `0`.)
+  samples older than the retention window (5 years), then rebuild the stats: the
+  `stats_cells` slot baselines and the `stats_garage` capacity estimates. Weekly,
+  not daily, because the rebuild scans all retained history per garage; the
+  baselines barely move week to week, so this stays well inside D1's free-tier
+  read budget. (Cloudflare's weekday field is 1-7 with 1=Sunday, not Unix's 0-6,
+  so `SUN` avoids an out-of-range `0`.)
 
 The feed reports `modified` as naive local Madison time (for example
 `"July 12, 2026 – 10:05am"`). It is parsed as `America/Chicago` and normalized to
@@ -53,10 +57,12 @@ fabricated timestamp), keeping collection idempotent.
 - `GET /history/sync?since=<epoch>` returns every garage's raw samples newer
   than `since`, as compact `[garage_id, ts, available]` tuples, paginated via a
   `complete` flag. This is what the client polls to top up its local cache.
-- `GET /stats?garage=<id>` returns the precomputed per-`(day_of_week, hour)`
-  percentile baselines (`p01, p10, p25, p50, p75`) used for relative coloring,
-  plus `generated_at` (when the baselines were last rebuilt). A cheap read of
-  `stats_cells`; see below for how they're built.
+- `GET /stats?garage=<id>` returns the garage's estimated `capacity` (for the
+  fullness color and "≈N% full" readout), the precomputed per-`(day_of_week,
+  hour)` percentile baselines (`p01, p10, p25, p50, p75`, for the slot-comparison
+  tidbit and the chart's "typical" overlay), and `generated_at` (when the stats
+  were last rebuilt). A cheap read of `stats_cells` + `stats_garage`; see below
+  for how they're built.
 - `POST /admin/rebuild-stats` runs the stats rebuild on demand, so the baselines
   can be populated before the first weekly cron fires. It is gated by a bearer
   token that MUST match the `ADMIN_TOKEN` secret (`Authorization: Bearer
@@ -64,24 +70,47 @@ fabricated timestamp), keeping collection idempotent.
   `just worker-rotate-token` recipe to set the secret and `just
   worker-rebuild-stats` to invoke it.
 
-## Relative-coloring baselines
+## Fullness estimate and slot baselines
 
-The client colors each garage by how its current count compares to what's normal
-for that garage at this day and hour, and the trend charts shade a "typical"
-range behind the actual line. Both come from `stats_cells`: a per-garage,
+The weekly rebuild produces two things, computed off the request path so `/stats`
+stays a cheap indexed read (and to stay inside D1's free-tier read budget, which
+a per-request full scan would blow).
+
+### Capacity estimate → the fullness headline (`stats_garage`)
+
+The card's headline answers "could I park here right now?" by coloring the card
+and filling its background to how full the garage is. That needs a total to
+divide by, and the feed reports none, so we **estimate** each garage's capacity:
+
+- **A high-water mark of availability.** A downtown ramp empties out overnight, so
+  the emptiest it's observed approximates its total. We take the 99th percentile
+  of `available_spaces` (`estimateCapacity`), not the raw max, so a single stray
+  high reading can't inflate the estimate. By construction the live count can sit
+  above p99 (~1% of readings); the client clamps occupancy to `[0, 100]`, so that
+  reads as "≈0% full", never a nonsensical value.
+- **Over a trailing ~30-day window,** not all history (`CAPACITY_WINDOW_SECONDS`).
+  Capacity can actually change (a floor closing), so a trailing window lets the
+  estimate follow it instead of pinning a value that no longer holds.
+- **Always an estimate.** The client labels it "≈N% full (est.)" and never shows
+  an exact capacity or a precise gauge. A garage with no estimate yet (too little
+  history) renders uncolored/unfilled.
+
+### Slot baselines → the "unusual for the time?" tidbit (`stats_cells`)
+
+A *secondary* signal: how the current count compares to what's normal for that
+garage at this day and hour ("busier than usual for a Sunday afternoon"), plus the
+"typical" p25–p75 band the trend chart shades behind the actual line. A per-garage,
 per-`(day_of_week, hour)` distribution of `available_spaces`, summarized as
-percentiles. The design reflects a few deliberate choices.
+percentiles. Deliberate choices:
 
-- **Precomputed weekly, not per request.** The `/stats` endpoint is a cheap
-  indexed read. The weekly maintenance cron does the expensive work and writes
-  the result, keeping the computation off the request path (and off D1's
-  free-tier read budget, which a per-request full scan would blow).
 - **Built from all retained history, not a trailing window.** A given
   `(day_of_week, hour)` cell recurs only about once a week, so recurring yearly
   and seasonal events (a summer farmer's market, an annual festival) only appear
   a handful of times across several years. Using every retained sample (the
   5-year retention is the effective bound) is what lets those show up in the
-  extreme tail instead of being averaged away.
+  extreme tail instead of being averaged away. (This is the opposite choice from
+  the capacity estimate above, which *does* want a trailing window — the two
+  signals answer different questions.)
 - **Adjacent hours pooled.** Within an hour the 5-minute samples barely move
   (people park for a while), so a single `(day, hour)` cell has far fewer
   *independent* observations than raw counts imply, too few to place an extreme
@@ -91,17 +120,28 @@ percentiles. The design reflects a few deliberate choices.
   per cell would be a flood of round-trips, so the cron pulls each garage's rows
   once and buckets and summarizes them in the Worker.
 - **Resolution only at the scarce end.** `p01` marks event-level packing, up
-  through `p75`. Above that a garage is comfortably open and no finer gradation
-  is stored: someone checking parking cares whether it's *full*, not how empty an
-  empty ramp is. There is no capacity figure anywhere, so p75 is the relative
-  stand-in for "plenty of room."
+  through `p75`; above that a garage is comfortably open and no finer gradation is
+  stored, since the tidbit only cares whether the count is unusually *low*
+  (busier than usual).
 - **Keyed on `(day_of_week, hour)`.** Richer cycles (month, season) were
   considered but not adopted: every added dimension multiplies the cells and
   divides the per-cell support, which fights the tail-stability the pooling and
   full-history choices buy. A coarse season bin is the natural next step if the
   data ever shows it's needed; adding it is a migration plus a change to the cell
-  key. Until a cell has at least a few observations the client leaves the garage
-  uncolored rather than guessing.
+  key. Until a cell has at least a few observations the client shows no tidbit
+  rather than guessing.
+
+While history is still filling in (the weeks right after collection starts), the
+fullness color appears quickly (the capacity estimate only needs *some* recent
+samples), but the slot tidbit can lag: it needs the cell for the *current*
+`(day_of_week, hour)`, which only appears once the weekly rebuild has run over
+history covering that hour. Two effects compound for the tidbit during this
+window: the current hour's cell may simply not exist yet, and the client caches
+`/stats` in IndexedDB for a few hours (`STATS_TTL_SECONDS` in `site/history.js`),
+so a "cold" fetch made before the cell existed keeps serving the cell-less
+response until that cache expires. It resolves on its own as history accumulates;
+to force it sooner, rebuild the stats (`just worker-rebuild-stats`) and reopen the
+app.
 
 ## Set up the database
 
@@ -167,11 +207,11 @@ subdomain is stable once your account has one, so CI redeploys keep the same URL
 
 ## Point the site at it
 
-Edit `site/app.js` and replace the `API_URL` constant at the top with the URL
-wrangler printed:
+Edit `site/app.js` and replace the `DEFAULT_API_URL` constant at the top with the
+URL wrangler printed:
 
 ```js
-const API_URL = "https://madison-parking.josh-karpel.workers.dev";
+const DEFAULT_API_URL = "https://madison-parking.josh-karpel.workers.dev";
 ```
 
 Commit and push; GitHub Actions redeploys the site.

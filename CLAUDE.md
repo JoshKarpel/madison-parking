@@ -18,9 +18,9 @@ parking garages, for two users on Android. Three pieces, deployed together:
 
 Data flow (live): city feed → Worker (`API_URL`) → browser `fetch` →
 `localStorage` cache + render. History: Worker cron → D1; browser →
-`/history*` + `/stats` → IndexedDB cache → graphs and relative coloring. The
-only persistence is the Worker's D1 history store; the client is purely a
-reader (it never collects data itself).
+`/history*` + `/stats` → IndexedDB cache → graphs, fullness coloring, and the
+slot-comparison tidbit. The only persistence is the Worker's D1 history store;
+the client is purely a reader (it never collects data itself).
 
 ## Hard constraints (do not violate)
 
@@ -36,12 +36,22 @@ reader (it never collects data itself).
   only when it's today, date and time otherwise) and its relative "N minutes ago"
   trailer from `observed_at`, and shows "unknown" when the epoch is absent. It
   never reads the `modified` string; never hand-roll a ±5/6 offset.
-- **No capacity/percentage/gauge UI.** The feed gives vacancy *counts only*;
-  there is no total-capacity data anywhere, and none is stored. Cards are
-  colored *relative to each garage's own history* for the current
-  `(day_of_week, hour)` (`site/coloring.js`), not by absolute thresholds. A
-  garage without enough history for its cell renders **uncolored**, with no
-  comparison claim: never invent a baseline.
+- **There is no *real* total-capacity figure anywhere; capacity is estimated,
+  and any fullness number is labeled an estimate.** The feed gives vacancy
+  *counts only*. We estimate each garage's capacity as a high-water mark (the
+  99th percentile of availability over a trailing ~30-day window: a downtown ramp
+  empties out overnight, so its emptiest observed state approximates its total),
+  computed by the weekly cron and stored per garage in `stats_garage`, served on
+  `/stats` as `capacity`. The **card headline answers "could I park here right
+  now?"**: `classifyFullness`/`occupancyPercent` (`site/coloring.js`) color the
+  card by estimated fullness and fill its background left-to-right to the
+  occupancy percent, with an "≈N% full (est.)" line. Always label it an estimate;
+  never present an exact capacity or a precise gauge. A garage with no capacity
+  estimate yet renders **uncolored/unfilled**. How the current count compares to
+  the garage's *own history* for the current `(day_of_week, hour)` is a
+  **secondary "unusual conditions" tidbit** (the comparison line, `classify`),
+  never the color; a cell without enough history shows no tidbit (never invent a
+  baseline).
 
 ## Garage identity
 
@@ -88,32 +98,40 @@ and recomputes trends off the live-snapshot path.
 
 ## History (collection, API, client cache)
 
-The Worker records a long-term history and the client reads it for trend graphs
-and relative coloring. Full detail in `worker/README.md`; the essentials:
+The Worker records a long-term history and the client reads it for trend graphs,
+fullness coloring, and the slot-comparison tidbit. Full detail in
+`worker/README.md`; the essentials:
 
 - **Collection** (`scheduled` handler, `worker/src/index.js`): two cron rates
   dispatched by `event.cron`. Every minute it inserts one row per garage into
   the D1 `samples` table (`STRICT, WITHOUT ROWID`); weekly it does maintenance
-  (prune past the 5-year retention window, then rebuild the stats baselines).
-  The primary key is `(garage_id, observed_at)` where `observed_at` is the feed's
-  own timestamp as a UTC epoch, so polling faster than the feed refreshes is
-  idempotent via `INSERT OR IGNORE`. There is no `capacity` column (the feed has
-  none; it would be static, not time-series).
+  (prune past the 5-year retention window, then rebuild the stats). The primary
+  key is `(garage_id, observed_at)` where `observed_at` is the feed's own
+  timestamp as a UTC epoch, so polling faster than the feed refreshes is
+  idempotent via `INSERT OR IGNORE`. The `samples` table has no `capacity` column
+  (the feed reports none); capacity is *estimated* and kept separately (below).
+- **Capacity estimate** (`stats_garage` table): the weekly cron estimates each
+  garage's total capacity as a high-water mark of availability, the 99th
+  percentile of `available_spaces` over a trailing ~30-day window
+  (`CAPACITY_WINDOW_SECONDS`, `estimateCapacity`). p99 not the raw max, to shrug
+  off a stray high reading; a trailing window not all history, so the estimate
+  follows a real capacity change (a floor closing). It powers the "could I park?"
+  fullness color and "≈N% full" readout, always labeled an estimate.
 - **Stats baselines** (`stats_cells` table): the weekly cron precomputes, over
   *all* retained history, each garage's `(day_of_week, hour)` percentiles
   (`p01, p10, p25, p50, p75`, local Central), pooling each cell with the adjacent
   hours for support (within-hour 5-min samples are autocorrelated). All history,
   not a trailing window, so rare yearly/seasonal events register in the tail.
-  Resolution is at the scarce end: `p01` is event-level packing; there is no
-  high-tail baseline. If more cyclical resolution is ever needed (a season bin),
-  it's a migration plus a change to the cell key, not a rewrite.
+  Resolution is at the scarce (low-availability) end: `p01` is event-level
+  packing. These drive the *secondary* slot-comparison tidbit ("busier than usual
+  for a Sunday afternoon"), not the card color.
 - **API**: `/history` (raw or SQL-bucketed hour/day aggregates), `/history/sync`
   (all garages' raw samples newer than `since`, for incremental client sync),
-  `/stats` (a cheap read of the precomputed `stats_cells`, including a
-  `generated_at` the client footer surfaces, flagged stale past ~a week as a
+  `/stats` (a cheap read of `stats_cells` plus the garage's `capacity` estimate
+  and a `generated_at` the client footer surfaces, flagged stale past ~a week as a
   dead-cron alarm). `POST /admin/rebuild-stats` runs the rebuild on demand
   (bearer token vs. the `ADMIN_TOKEN` secret, fails closed when unset) to
-  bootstrap baselines before the first weekly cron. `just worker-rotate-token`
+  bootstrap the stats before the first weekly cron. `just worker-rotate-token`
   sets the secret + `.env`; `just worker-rebuild-stats` invokes it.
 - **Client cache** (`site/history.js`): IndexedDB stores raw samples (`samples`,
   keyed `[garage_id, ts]`) plus a cache of server bucket aggregates and stats.
@@ -121,9 +139,12 @@ and relative coloring. Full detail in `worker/README.md`; the essentials:
   window on a cold start, and prunes past one year. Everything degrades: if
   IndexedDB is unavailable or a fetch fails, callers fall back to the Worker and
   the live view still renders.
-- **Graphs** (`site/chart.js`): hand-rolled SVG, one line plus a shaded
-  min/max band, day/week/month/year toggle picking raw/hour/day buckets. Reads
-  IndexedDB first for the covered window, hits the Worker for the rest.
+- **Graphs** (`site/chart.js`): hand-rolled SVG, one line plus a shaded band
+  (min/max, or the "typical" p25–p75 overlay from the baseline cells), day/week/
+  month/year toggle picking raw/hour/day buckets. The y-axis fits the data's own
+  range (padded, floored at 0), not anchored at 0, so a garage sitting far from
+  empty still fills the plot. Reads IndexedDB first for the covered window, hits
+  the Worker for the rest.
 
 ## Service worker updates (important)
 
@@ -185,9 +206,10 @@ Recipes live in the `justfile` (`just --list`):
 
 `test/` holds a no-framework harness (`harness.mjs`) run by `test/run.mjs`
 (`just test`), covering the pure logic: the Worker's timestamp/timezone parsing,
-percentiles, cron dispatch and retention (`worker/src/index.js` exports these);
-the client's relative-coloring bands and busiest-hour forecast (`site/coloring.js`),
-the recent-trend classifier (`computeTrend` in `site/history.js`); and the service
+percentiles, capacity estimate, cron dispatch and retention (`worker/src/index.js`
+exports these); the client's fullness bands and occupancy percent, slot-comparison
+bands, and busiest-hour forecast (`site/coloring.js`), the recent-trend classifier
+and relative-time/stats-freshness helpers (`site/history.js`); and the service
 worker's offline fetch fallback (loaded into a `vm` with mocked globals). Only
 functions may be exported from the Worker module besides `default` (the runtime
 treats other named exports as entrypoints), so export helpers, not constants.

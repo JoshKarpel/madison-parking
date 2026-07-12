@@ -37,6 +37,13 @@ const SYNC_PAGE_LIMIT_ROWS = 20000;
 // only to cap storage, not to shape the data.
 const RETENTION_SECONDS = 5 * 365 * 86400;
 
+// Window the capacity estimate looks back over. The feed reports no capacity, so
+// we estimate each garage's total as a high-water mark of recent availability (a
+// downtown ramp empties out overnight, so its emptiest observed state approximates
+// its total). A trailing window, not all history, lets the estimate follow a real
+// capacity change (a floor closing) instead of pinning a value that no longer holds.
+const CAPACITY_WINDOW_SECONDS = 30 * 86400;
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -366,8 +373,15 @@ async function handleStats(url, env) {
     if (r.computed_at > generatedAt) generatedAt = r.computed_at;
   }
 
+  // The estimated total capacity (for the "≈N% full" fullness readout), or null
+  // until the weekly rebuild has written one for this garage.
+  const cap = await env.madison_parking
+    .prepare("SELECT capacity FROM stats_garage WHERE garage_id = ?")
+    .bind(garage)
+    .first();
+
   return json(
-    { garage, generated_at: generatedAt, cells },
+    { garage, generated_at: generatedAt, capacity: cap ? cap.capacity : null, cells },
     200,
     { "Cache-Control": `public, max-age=${STATS_CACHE_TTL_SECONDS}` }
   );
@@ -418,6 +432,19 @@ function computeCells(rows, toCell) {
   return cells;
 }
 
+// Estimate a garage's total capacity from a high-water mark of recent
+// availability: the 99th percentile of available_spaces among rows within the
+// trailing window (observed_at >= sinceSec). The 99th percentile rather than the
+// raw max shrugs off a stray high reading. Null when the window holds no rows.
+// Pure: rows in, number out.
+function estimateCapacity(rows, sinceSec) {
+  const recent = rows
+    .filter((r) => r.observed_at >= sinceSec)
+    .map((r) => r.available_spaces)
+    .sort((a, b) => a - b);
+  return percentile(recent, 0.99);
+}
+
 // Weekly cron: recompute every garage's baselines from all retained history and
 // upsert them, then drop cells not refreshed this run (a garage that stopped
 // reporting, or a cell whose samples have all aged out of retention).
@@ -429,12 +456,16 @@ async function rebuildStats(env, scheduledTimeMs) {
     await env.madison_parking.prepare("SELECT DISTINCT garage_id FROM samples").all()
   ).results.map((r) => r.garage_id);
 
-  const upsert = env.madison_parking.prepare(
+  const upsertCell = env.madison_parking.prepare(
     `INSERT OR REPLACE INTO stats_cells
        (garage_id, day_of_week, hour, observations, p01, p10, p25, p50, p75, computed_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  const upsertCapacity = env.madison_parking.prepare(
+    `INSERT OR REPLACE INTO stats_garage (garage_id, capacity, computed_at) VALUES (?, ?, ?)`
+  );
 
+  const capacitySince = computedAt - CAPACITY_WINDOW_SECONDS;
   const writes = [];
   for (const garage of garages) {
     const { results } = await env.madison_parking
@@ -443,17 +474,21 @@ async function rebuildStats(env, scheduledTimeMs) {
       .all();
     for (const [key, c] of Object.entries(computeCells(results, toCell))) {
       const [dow, hour] = key.split("-").map(Number);
-      writes.push(upsert.bind(garage, dow, hour, c.n, c.p01, c.p10, c.p25, c.p50, c.p75, computedAt));
+      writes.push(upsertCell.bind(garage, dow, hour, c.n, c.p01, c.p10, c.p25, c.p50, c.p75, computedAt));
     }
+    const capacity = estimateCapacity(results, capacitySince);
+    if (capacity != null) writes.push(upsertCapacity.bind(garage, capacity, computedAt));
   }
   if (writes.length) await env.madison_parking.batch(writes);
 
-  await env.madison_parking
-    .prepare("DELETE FROM stats_cells WHERE computed_at < ?")
-    .bind(computedAt)
-    .run();
-  console.log(`rebuildStats: ${writes.length} cells across ${garages.length} garages`);
-  return { cells: writes.length, garages: garages.length, computed_at: computedAt };
+  // Drop rows this run didn't refresh (a garage that stopped reporting, or whose
+  // recent samples all aged out), for both tables in lockstep with the cells.
+  await env.madison_parking.batch([
+    env.madison_parking.prepare("DELETE FROM stats_cells WHERE computed_at < ?").bind(computedAt),
+    env.madison_parking.prepare("DELETE FROM stats_garage WHERE computed_at < ?").bind(computedAt),
+  ]);
+  console.log(`rebuildStats: ${writes.length} rows across ${garages.length} garages`);
+  return { rows: writes.length, garages: garages.length, computed_at: computedAt };
 }
 
 // --- admin -------------------------------------------------------------------
@@ -543,6 +578,7 @@ export {
   makeLocalCellResolver,
   percentile,
   computeCells,
+  estimateCapacity,
   cronAction,
   retentionCutoffSec,
   safeEqual,

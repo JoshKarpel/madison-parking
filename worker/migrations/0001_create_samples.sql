@@ -5,9 +5,10 @@
 -- primary key so that polling the feed faster than it refreshes is idempotent:
 -- INSERT OR IGNORE drops a sample whose (garage_id, observed_at) we already have.
 --
--- No capacity column: the feed never reports capacity, and capacity is static
--- rather than time-series, so it does not belong here. If the city ever exposes
--- it, add a separate garage -> capacity table and join.
+-- No capacity column: the feed never reports capacity, and it is per-garage, not
+-- per-sample, so it does not belong here. Capacity is instead estimated from this
+-- table (a high-water mark of availability) and kept in the separate stats_garage
+-- table; see migration 0003.
 CREATE TABLE IF NOT EXISTS samples (
   garage_id        TEXT    NOT NULL,
   observed_at      INTEGER NOT NULL,  -- unix epoch seconds, UTC
