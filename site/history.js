@@ -313,9 +313,19 @@ export function humanizeAgo(seconds) {
 
 // --- stats baselines ---------------------------------------------------------
 
-// Per-(day_of_week, hour) percentile baselines for relative coloring. Cached in
-// IndexedDB for STATS_TTL_SECONDS; refetched past that. Falls back to the cached
-// copy (even if stale) when offline, and to a bare network fetch with no db.
+// A stats response is worth caching only once it can drive the headline: it needs
+// a capacity estimate. Caching a "cold" response (capacity still null, before the
+// first rebuild has populated stats_garage) would pin it for STATS_TTL_SECONDS and
+// keep the garage uncolored even after the estimate lands. So we refetch such
+// responses every open instead (the Worker edge-caches /stats, so it's cheap).
+function statsWorthCaching(stats) {
+  return stats && stats.capacity != null;
+}
+
+// Per-garage capacity estimate + (day_of_week, hour) percentile baselines. Cached
+// in IndexedDB for STATS_TTL_SECONDS once complete (see statsWorthCaching);
+// refetched past that. Falls back to the cached copy (even if stale) when offline,
+// and to a bare network fetch with no db.
 export async function getStats(db, apiUrl, garage) {
   const key = `stats:${garage}`;
   let cached = null;
@@ -329,7 +339,7 @@ export async function getStats(db, apiUrl, garage) {
     const res = await fetch(`${apiUrl}/stats?garage=${encodeURIComponent(garage)}`);
     if (!res.ok) throw new Error(`stats HTTP ${res.status}`);
     const stats = await res.json();
-    if (db) {
+    if (db && statsWorthCaching(stats)) {
       const store = tx(db, STORE_META, "readwrite");
       store.put({ key, fetchedAt: nowSec(), stats });
       await txDone(store.transaction);
