@@ -50,15 +50,26 @@ export function renderChart(points, { band = false, baseline = null, stepSeconds
     if (band && p.max != null) values.push(p.max);
   }
   if (baseline) for (const b of baseline) values.push(b.p25, b.p75);
-  const yMax = Math.max(10, Math.ceil(Math.max(...values) / 10) * 10);
+
+  // Fit the y-axis to the data's own range (padded, rounded to tens for clean
+  // labels) instead of anchoring at 0, so a garage sitting far from empty fills
+  // the plot vertically rather than hugging the top over a band of dead space.
+  // Floored at 0 since vacancy can't go negative.
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const pad = Math.max(10, rawMax - rawMin) * 0.1;
+  const yMin = Math.max(0, Math.floor((rawMin - pad) / 10) * 10);
+  let yMax = Math.ceil((rawMax + pad) / 10) * 10;
+  if (yMax - yMin < 10) yMax = yMin + 10;
+  const ySpan = yMax - yMin;
 
   const plotW = VIEW_W - PAD.left - PAD.right;
   const plotH = VIEW_H - PAD.top - PAD.bottom;
   const x = (ts) => PAD.left + ((ts - t0) / tSpan) * plotW;
-  const y = (v) => PAD.top + (1 - v / yMax) * plotH;
+  const y = (v) => PAD.top + (1 - (v - yMin) / ySpan) * plotH;
 
-  // y gridlines + labels at 0, mid, max.
-  for (const v of [0, yMax / 2, yMax]) {
+  // y gridlines + labels at min, mid, max of the fitted range.
+  for (const v of [yMin, (yMin + yMax) / 2, yMax]) {
     const gy = y(v);
     svg.append(el("line", { x1: PAD.left, y1: gy, x2: VIEW_W - PAD.right, y2: gy, class: "chart-grid" }));
     const label = el("text", { x: PAD.left - 5, y: gy + 3, class: "chart-ylabel" });
@@ -71,7 +82,10 @@ export function renderChart(points, { band = false, baseline = null, stepSeconds
   for (let i = 0; i < ticks; i++) {
     const ts = t0 + (tSpan * i) / Math.max(1, ticks - 1);
     const tx = x(ts);
-    const label = el("text", { x: tx, y: VIEW_H - 8, class: "chart-xlabel" });
+    // Anchor the end ticks inward so the first/last label can't overflow (and get
+    // clipped by) the SVG's edges; the middle ticks stay centered on their tick.
+    const anchor = i === 0 ? "start" : i === ticks - 1 ? "end" : "middle";
+    const label = el("text", { x: tx, y: VIEW_H - 8, class: "chart-xlabel", "text-anchor": anchor });
     label.textContent = xFormat ? xFormat(ts) : "";
     svg.append(label);
   }

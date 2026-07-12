@@ -435,7 +435,7 @@ footer a {
    count summary. */
 .graph-view {
   width: 100%;
-  padding: 0.85rem 1rem 1rem;
+  padding: 0.6rem 1rem 0.7rem;
   border-top: 1px solid var(--border);
 }
 
@@ -446,7 +446,7 @@ footer a {
 .graph-ranges {
   display: flex;
   gap: 0.4rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .graph-range {
@@ -523,7 +523,6 @@ footer a {
 .chart-xlabel {
   fill: var(--muted);
   font-size: 11px;
-  text-anchor: middle;
 }
 
 .chart-empty {
@@ -534,10 +533,16 @@ footer a {
 
 .graph-status {
   margin-top: 0.5rem;
-  min-height: 1.1em;
   text-align: center;
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+/* Collapse the status/legend rows entirely when they carry no text, so an empty
+   status doesn't reserve a band of dead space under the chart. */
+.graph-status:empty,
+.graph-legend:empty {
+  display: none;
 }
 
 .graph-legend {
