@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#66ccff" />
-    <!-- The UI is English and the upstream timestamp is shown verbatim; keep
-         browsers from auto-translating it (e.g. into the phone's UI language). -->
+    <!-- The UI is English; keep browsers from auto-translating it (e.g. into the
+         phone's UI language). -->
     <meta name="google" content="notranslate" />
     <title>Downtown Madison Public Parking</title>
     <link rel="manifest" href="./manifest.webmanifest" />
@@ -18,7 +18,7 @@
     <header>
       <h1>Downtown Madison Public Parking</h1>
       <p class="meta">
-        Updated: <span id="modified">…</span>
+        Updated: <span id="modified">…</span><span id="modified-ago" class="modified-ago"></span>
       </p>
       <p class="status-row">
         <span id="status" class="status"></span>
@@ -45,6 +45,7 @@
         close), 🗺️ for its map. Use ▲▼ to reorder, − to minimize a garage you
         don't need (tap its row to restore). Pull down to refresh.
       </p>
+      <p id="stats-status" class="stats-status"></p>
     </footer>
 
     <script type="module" src="./app.js"></script>

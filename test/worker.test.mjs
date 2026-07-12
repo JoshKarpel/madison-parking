@@ -7,6 +7,7 @@ import {
   computeCells,
   cronAction,
   retentionCutoffSec,
+  safeEqual,
 } from "../worker/src/index.js";
 
 const FIVE_YEARS_SECONDS = 5 * 365 * 86400;
@@ -142,4 +143,23 @@ test("percentiles are monotonic on noisy data", () => {
   const p50 = percentile(s, 0.5);
   const p90 = percentile(s, 0.9);
   ok(p10 <= p50 && p50 <= p90, `expected p10<=p50<=p90, got ${p10},${p50},${p90}`);
+});
+
+// --- admin token compare -----------------------------------------------------
+
+test("safeEqual accepts an exact token match", () => {
+  ok(safeEqual("s3cret-token-abc", "s3cret-token-abc"));
+});
+
+test("safeEqual rejects a wrong token of equal length", () => {
+  ok(!safeEqual("s3cret-token-abc", "s3cret-token-xyz"));
+});
+
+test("safeEqual rejects a length mismatch", () => {
+  ok(!safeEqual("short", "a-much-longer-token"));
+});
+
+test("safeEqual rejects non-strings (missing or malformed header)", () => {
+  ok(!safeEqual(null, "expected-token"));
+  ok(!safeEqual(undefined, "expected-token"));
 });

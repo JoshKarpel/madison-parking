@@ -3,6 +3,10 @@
 set dotenv-load
 set ignore-comments
 
+# Base URL for admin/curl recipes; override to hit a local worker-dev instance,
+# e.g. `just worker-url=http://localhost:8787 worker-rebuild-stats`.
+worker-url := "https://madison-parking.josh-karpel.workers.dev"
+
 [default]
 [doc("List available recipes")]
 list:
@@ -50,6 +54,30 @@ worker-dev:
 [doc("Stream live logs from the deployed Worker")]
 worker-tail:
     cd worker && exec npx wrangler tail
+
+# The token is read from .env via an inline $(awk ...): just echoes the recipe
+# text verbatim before the shell expands it, so the echoed command shows the
+# subcommand, not the secret. `sub` strips only the key prefix, so a value
+# containing '=' survives intact.
+[group('worker')]
+[doc("Trigger the on-demand stats rebuild (POST /admin/rebuild-stats; ADMIN_TOKEN from .env)")]
+worker-rebuild-stats:
+    curl -sS -X POST -H "Authorization: Bearer $(awk '/^ADMIN_TOKEN=/{sub(/^ADMIN_TOKEN=/, ""); print; exit}' .env)" {{ worker-url }}/admin/rebuild-stats
+
+[group('worker')]
+[doc("Rotate ADMIN_TOKEN: push a fresh token to the Worker secret, then persist to .env only on success")]
+worker-rotate-token:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    token="$(openssl rand -hex 32)"
+    # Set the Worker's secret first. If this fails (auth, network), set -e aborts
+    # before .env is touched, so .env never gets ahead of the deployed secret.
+    printf '%s' "$token" | (cd worker && npx wrangler secret put ADMIN_TOKEN)
+    # Succeeded: replace any existing ADMIN_TOKEN line in .env (preserving the
+    # rest) and write atomically via a temp file.
+    { grep -v '^ADMIN_TOKEN=' .env 2>/dev/null || true; echo "ADMIN_TOKEN=$token"; } > .env.tmp
+    mv .env.tmp .env
+    echo "ADMIN_TOKEN rotated: Worker secret updated and .env synced."
 
 [group('site')]
 [doc("Serve the static site locally at http://localhost:8137")]

@@ -7,7 +7,10 @@ import {
   getStats,
   getRecentSamples,
   computeTrend,
+  statsFreshness,
+  humanizeAgo,
   nowSec,
+  DAY_SECONDS,
 } from "./history.js";
 import { BUILD_ID } from "./version.js";
 import { classify, comparisonLabel, forecastLabel, localCell, cellKey } from "./coloring.js";
@@ -75,11 +78,13 @@ const STORAGE_KEYS = {
 
 const els = {
   modified: document.getElementById("modified"),
+  modifiedAgo: document.getElementById("modified-ago"),
   status: document.getElementById("status"),
   progressBar: document.getElementById("refresh-progress-bar"),
   refreshLabel: document.getElementById("refresh-label"),
   cards: document.getElementById("cards"),
   refreshIndicator: document.getElementById("refresh-indicator"),
+  statsStatus: document.getElementById("stats-status"),
 };
 
 function loadCachedData() {
@@ -268,6 +273,13 @@ function makeCard(entry, { minimized, index, total }) {
   if (entry.id === expandedId) card.classList.add("expanded");
   card.dataset.id = entry.id;
 
+  // The summary holds the count and every corner control, and is the controls'
+  // positioning context. The inline graph mounts as the card's next child, below
+  // the summary, so expanding the card doesn't move the controls (they stay
+  // anchored to the summary, not the taller card).
+  const summary = document.createElement("div");
+  summary.className = "card-summary";
+
   const minimize = document.createElement("button");
   minimize.className = "minimize";
   minimize.type = "button";
@@ -287,16 +299,16 @@ function makeCard(entry, { minimized, index, total }) {
   label.className = "count-label";
   label.textContent = entry.count == null ? "unavailable" : "spots";
 
-  card.append(minimize, name);
+  summary.append(minimize, name);
 
   if (entry.note) {
     const note = document.createElement("div");
     note.className = "note";
     note.textContent = entry.note;
-    card.append(note);
+    summary.append(note);
   }
 
-  card.append(count, label);
+  summary.append(count, label);
 
   // Short-term direction from recently-synced samples: filling up, emptying out,
   // or holding steady right now.
@@ -305,7 +317,7 @@ function makeCard(entry, { minimized, index, total }) {
     const el = document.createElement("div");
     el.className = `trend trend-${trend.direction}`;
     el.textContent = TREND_TEXT[trend.direction];
-    card.append(el);
+    summary.append(el);
   }
 
   // How this count compares to the garage's own history for this day and hour,
@@ -315,7 +327,7 @@ function makeCard(entry, { minimized, index, total }) {
     const el = document.createElement("div");
     el.className = "comparison";
     el.textContent = comparison;
-    card.append(el);
+    summary.append(el);
   }
 
   // A forward-looking heads-up ("usually busiest around 6pm"), when the baseline
@@ -325,13 +337,13 @@ function makeCard(entry, { minimized, index, total }) {
     const el = document.createElement("div");
     el.className = "forecast";
     el.textContent = forecast;
-    card.append(el);
+    summary.append(el);
   }
 
   // Reorder with up/down arrows in the left corners, disabled at the ends of
   // the active list (only meaningful when there's more than one card).
   if (total > 1) {
-    card.append(
+    summary.append(
       makeMove(entry, -1, "▲", "up", index === 0),
       makeMove(entry, 1, "▼", "down", index === total - 1)
     );
@@ -339,11 +351,13 @@ function makeCard(entry, { minimized, index, total }) {
 
   // Garages with a known address get a Google Maps link in the top-right
   // corner; unmapped ramps have no known location, so no link.
-  if (entry.address) card.append(makeMapLink(entry));
+  if (entry.address) summary.append(makeMapLink(entry));
 
   // The chart toggle sits in the bottom-right corner; tapping it opens/closes
   // the trend view inline in place.
-  card.append(makeGraphToggle(entry));
+  summary.append(makeGraphToggle(entry));
+
+  card.append(summary);
 
   // When expanded, the trend view mounts into the card below the summary.
   if (entry.id === expandedId) card.append(graphView.mount(entry));
@@ -419,7 +433,8 @@ let lastData = null;
 
 function render(data) {
   lastData = data;
-  els.modified.textContent = data && data.modified ? data.modified : "unknown";
+  els.modified.textContent = formatUpdated(data);
+  updateModifiedAgo();
 
   const entries = garageEntries(data ? data.vacancies : {});
   const byId = new Map(entries.map((e) => [e.id, e]));
@@ -435,6 +450,34 @@ function render(data) {
     ),
     ...minimized.map((id) => makeCard(byId.get(id), { minimized: true }))
   );
+}
+
+// The "Updated" timestamp, localized to the viewer from the Worker's machine
+// epoch: time only when it's today, date and time otherwise (so stale data that
+// crossed midnight reads unambiguously). "unknown" when the epoch is absent (no
+// data yet, unparseable upstream, or a cached snapshot from before `observed_at`
+// existed); the client works solely from the epoch, never the `modified` string.
+function formatUpdated(data) {
+  if (!data || typeof data.observed_at !== "number") return "unknown";
+  const when = new Date(data.observed_at * 1000);
+  const now = new Date();
+  const isToday =
+    when.getFullYear() === now.getFullYear() &&
+    when.getMonth() === now.getMonth() &&
+    when.getDate() === now.getDate();
+  const options = isToday
+    ? { hour: "numeric", minute: "2-digit" }
+    : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
+  return when.toLocaleString(undefined, options);
+}
+
+// Relative trailer after the timestamp, from the Worker-supplied machine epoch.
+// Refreshed on each render and on the per-second countdown tick so it advances
+// between the data refreshes without waiting for the next fetch.
+function updateModifiedAgo() {
+  const observedAt =
+    lastData && typeof lastData.observed_at === "number" ? lastData.observed_at : null;
+  els.modifiedAgo.textContent = observedAt ? ` (${humanizeAgo(nowSec() - observedAt)})` : "";
 }
 
 function setStatus(state) {
@@ -562,6 +605,7 @@ function stopProgressBar() {
 function updateCountdownLabel() {
   const remainingSec = Math.ceil((nextRefreshAt - Date.now()) / 1000);
   els.refreshLabel.textContent = `checking for update in ${Math.max(0, remainingSec)}s`;
+  updateModifiedAgo();
 }
 
 function scheduleNextRefresh() {
@@ -598,6 +642,48 @@ async function loadStats(ids) {
     })
   );
   if (results.some((r) => r.status === "fulfilled")) render(lastData);
+  renderStatsStatus();
+}
+
+// The newest baseline rebuild across all loaded garages. The weekly cron stamps
+// every garage with the same time, so the max is the last stats update; 0 until
+// any stats load.
+function newestStatsGeneratedAt() {
+  let newest = 0;
+  for (const stats of statsByGarage.values()) {
+    const generatedAt = stats && stats.generated_at;
+    if (typeof generatedAt === "number" && generatedAt > newest) newest = generatedAt;
+  }
+  return newest;
+}
+
+function agoLabel(ageSeconds) {
+  const days = Math.floor(ageSeconds / DAY_SECONDS);
+  if (days <= 0) return "today";
+  return days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
+// Footer line reporting when the baselines were last rebuilt, flagged stale (the
+// weekly cron has likely stopped) past STATS_STALE_SECONDS. Empty until stats
+// load, so it never claims a freshness it can't back up.
+function renderStatsStatus() {
+  const freshness = statsFreshness(newestStatsGeneratedAt(), nowSec());
+  const el = els.statsStatus;
+  if (!freshness) {
+    el.textContent = "";
+    el.classList.remove("stale");
+    return;
+  }
+  const when = new Date(freshness.generatedAt * 1000).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  const ago = agoLabel(freshness.ageSeconds);
+  el.classList.toggle("stale", freshness.stale);
+  el.textContent = freshness.stale
+    ? `⚠️ Stats last updated ${when} (${ago}) — updates may have stopped.`
+    : `Stats updated ${when} (${ago}).`;
 }
 
 // --- Recent trend ------------------------------------------------------------

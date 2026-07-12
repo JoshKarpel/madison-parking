@@ -54,8 +54,15 @@ fabricated timestamp), keeping collection idempotent.
   than `since`, as compact `[garage_id, ts, available]` tuples, paginated via a
   `complete` flag. This is what the client polls to top up its local cache.
 - `GET /stats?garage=<id>` returns the precomputed per-`(day_of_week, hour)`
-  percentile baselines (`p01, p10, p25, p50, p75`) used for relative coloring. A
-  cheap read of `stats_cells`; see below for how they're built.
+  percentile baselines (`p01, p10, p25, p50, p75`) used for relative coloring,
+  plus `generated_at` (when the baselines were last rebuilt). A cheap read of
+  `stats_cells`; see below for how they're built.
+- `POST /admin/rebuild-stats` runs the stats rebuild on demand, so the baselines
+  can be populated before the first weekly cron fires. It is gated by a bearer
+  token that MUST match the `ADMIN_TOKEN` secret (`Authorization: Bearer
+  <token>`) and fails closed with `403` when no token is configured. Use the
+  `just worker-rotate-token` recipe to set the secret and `just
+  worker-rebuild-stats` to invoke it.
 
 ## Relative-coloring baselines
 
@@ -176,4 +183,6 @@ curl -i https://madison-parking.josh-karpel.workers.dev
 ```
 
 You should see `access-control-allow-origin: *`, `cache-control: public, max-age=30`,
-and a JSON body with `modified` and `vacancies`.
+and a JSON body with `modified`, `vacancies`, and `observed_at` (the `modified`
+string parsed to a UTC epoch, which the client uses for its localized "Updated"
+line and relative "N minutes ago" trailer).

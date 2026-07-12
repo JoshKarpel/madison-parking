@@ -18,6 +18,12 @@ export const DAY_SECONDS = 86400;
 const RETENTION_SECONDS = 365 * DAY_SECONDS;
 const STATS_TTL_SECONDS = 6 * 60 * 60;
 
+// The Worker rebuilds the /stats baselines weekly. If the newest baseline is
+// older than this, that cron has almost certainly stopped — the footer surfaces
+// it as a plain "something is wrong" signal. Just past the 7-day cadence, so one
+// late run doesn't cry wolf but a genuinely stuck cron trips it within a day.
+export const STATS_STALE_SECONDS = 8 * DAY_SECONDS;
+
 // On a cold start we don't pull a year of raw (~100k rows/garage); we sync raw
 // only for this trailing window and let bucketed queries cover older ranges.
 const COLD_START_RAW_SECONDS = 7 * DAY_SECONDS;
@@ -280,6 +286,29 @@ export async function getRawHistory(db, apiUrl, garage, since, until) {
     if (local.length) return local;
   }
   return fetchBuckets(apiUrl, garage, "raw", since, until);
+}
+
+// Freshness verdict for the newest stats baseline. `generatedAt` is UTC epoch
+// seconds (the Worker's /stats `generated_at`); a falsy value means no stats
+// have loaded, so there's nothing to judge. Pure: timestamps in, verdict out.
+export function statsFreshness(generatedAt, now) {
+  if (!generatedAt) return null;
+  const ageSeconds = now - generatedAt;
+  return { generatedAt, ageSeconds, stale: ageSeconds > STATS_STALE_SECONDS };
+}
+
+// Human "time since" label at coarsening granularity: seconds -> minutes ->
+// hours -> days. For display next to a timestamp. Pure: seconds in, string out;
+// clamps negatives (a feed slightly ahead of the local clock) to "just now".
+export function humanizeAgo(seconds) {
+  const s = Math.max(0, Math.floor(seconds));
+  if (s < 60) return "just now";
+  const minutes = Math.floor(s / 60);
+  if (minutes < 60) return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
+  const hours = Math.floor(s / 3600);
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.floor(s / 86400);
+  return days === 1 ? "1 day ago" : `${days} days ago`;
 }
 
 // --- stats baselines ---------------------------------------------------------

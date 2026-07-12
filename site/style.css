@@ -36,6 +36,18 @@
   box-sizing: border-box;
 }
 
+/* The layout is a single phone-width column. Cap it and center on wider screens
+   so the desktop browser doesn't stretch the cards and count numbers full-width;
+   the body background still fills the viewport. */
+header,
+main,
+footer,
+#refresh-indicator {
+  max-width: 40rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
 }
@@ -167,13 +179,25 @@ h2 {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 1rem;
-  padding: 1rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* The summary carries the card's padding and is the positioning context for the
+   corner controls, so they anchor here rather than to the whole card. When a
+   card expands, the graph mounts as the card's next child below this box, so the
+   summary (and its controls) keep the exact size and position they had collapsed. */
+.card-summary {
+  position: relative;
+  width: 100%;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .card .name {
@@ -396,13 +420,22 @@ footer a {
   text-decoration: underline;
 }
 
+.stats-status {
+  margin: 0.75rem 0 0;
+}
+
+/* Baselines rebuild weekly; a stale one means the Worker's cron has stopped. */
+.stats-status.stale {
+  color: var(--red);
+  font-weight: 600;
+}
+
 /* --- Inline trend view ---------------------------------------------------- */
 /* The view a card expands into in place. Full width within the card, below the
    count summary. */
 .graph-view {
   width: 100%;
-  margin-top: 0.85rem;
-  padding-top: 0.85rem;
+  padding: 0.85rem 1rem 1rem;
   border-top: 1px solid var(--border);
 }
 

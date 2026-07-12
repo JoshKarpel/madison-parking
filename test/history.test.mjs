@@ -1,5 +1,5 @@
 import { test, eq } from "./harness.mjs";
-import { computeTrend } from "../site/history.js";
+import { computeTrend, statsFreshness, STATS_STALE_SECONDS, humanizeAgo } from "../site/history.js";
 
 // Samples are {ts, avg} ascending by ts; the trend compares the last against the
 // first over the window. Positive delta = spots opening up (emptying). The
@@ -50,4 +50,65 @@ test("computeTrend needs two samples to judge", () => {
   eq(computeTrend([{ ts: 100, avg: 12 }]), null);
   eq(computeTrend([]), null);
   eq(computeTrend(null), null);
+});
+
+// statsFreshness flags baselines that have gone stale (the weekly rebuild cron
+// stopped). generatedAt/now are UTC epoch seconds; stale past STATS_STALE_SECONDS.
+
+test("statsFreshness reports a recent baseline as fresh", () => {
+  const generatedAt = 1_000_000;
+  const now = generatedAt + 3 * 86400; // 3 days old
+  eq(statsFreshness(generatedAt, now), {
+    generatedAt,
+    ageSeconds: 3 * 86400,
+    stale: false,
+  });
+});
+
+test("statsFreshness flags a baseline older than the stale bound", () => {
+  const generatedAt = 1_000_000;
+  const now = generatedAt + STATS_STALE_SECONDS + 86400; // a day past the bound
+  eq(statsFreshness(generatedAt, now), {
+    generatedAt,
+    ageSeconds: STATS_STALE_SECONDS + 86400,
+    stale: true,
+  });
+});
+
+test("statsFreshness treats an age exactly at the bound as still fresh", () => {
+  const generatedAt = 1_000_000;
+  const now = generatedAt + STATS_STALE_SECONDS;
+  eq(statsFreshness(generatedAt, now).stale, false);
+});
+
+test("statsFreshness has nothing to judge without a timestamp", () => {
+  eq(statsFreshness(0, 1_000_000), null);
+  eq(statsFreshness(null, 1_000_000), null);
+});
+
+// humanizeAgo coarsens an age in seconds into a "time since" label, singular at
+// the boundary and clamping a negative (feed clock slightly ahead) to "just now".
+
+test("humanizeAgo reads under a minute as just now", () => {
+  eq(humanizeAgo(0), "just now");
+  eq(humanizeAgo(59), "just now");
+});
+
+test("humanizeAgo reports whole minutes, singular at one", () => {
+  eq(humanizeAgo(60), "1 minute ago");
+  eq(humanizeAgo(185), "3 minutes ago");
+});
+
+test("humanizeAgo rolls up to hours past 60 minutes", () => {
+  eq(humanizeAgo(3600), "1 hour ago");
+  eq(humanizeAgo(9000), "2 hours ago");
+});
+
+test("humanizeAgo rolls up to days past 24 hours", () => {
+  eq(humanizeAgo(86400), "1 day ago");
+  eq(humanizeAgo(3 * 86400 + 500), "3 days ago");
+});
+
+test("humanizeAgo clamps a negative age to just now", () => {
+  eq(humanizeAgo(-42), "just now");
 });

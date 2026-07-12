@@ -26,12 +26,16 @@ reader (it never collects data itself).
 
 - **No build toolchain, bundler, or npm deps in `site/`.** It must deploy as raw
   static files. Keep it vanilla ES modules.
-- **The client never parses the upstream `modified` string into a `Date`.** It
-  is a human-formatted local (Central) string with an en-dash, not ISO; the
-  client displays it verbatim. The Worker *does* parse it, but carefully: as
-  naive `America/Chicago` wall-clock time converted to a UTC epoch with a
-  DST-correct offset (`parseFeedModified` in `worker/src/index.js`), only for
-  storing `observed_at`. Never hand-roll a ±5/6 offset.
+- **Only the Worker touches the upstream feed's `modified` timestamp.** It is a
+  human-formatted local (Central) string with an en-dash, not ISO. The Worker
+  parses it carefully: as naive `America/Chicago` wall-clock time converted to a
+  UTC epoch with a DST-correct offset (`parseFeedModified` in
+  `worker/src/index.js`), both for storing `observed_at` and for exposing that
+  epoch as `observed_at` in the live snapshot response. The client works solely
+  from that epoch: it formats the "Updated" line (localized to the viewer: time
+  only when it's today, date and time otherwise) and its relative "N minutes ago"
+  trailer from `observed_at`, and shows "unknown" when the epoch is absent. It
+  never reads the `modified` string; never hand-roll a ±5/6 offset.
 - **No capacity/percentage/gauge UI.** The feed gives vacancy *counts only*;
   there is no total-capacity data anywhere, and none is stored. Cards are
   colored *relative to each garage's own history* for the current
@@ -105,7 +109,12 @@ and relative coloring. Full detail in `worker/README.md`; the essentials:
   it's a migration plus a change to the cell key, not a rewrite.
 - **API**: `/history` (raw or SQL-bucketed hour/day aggregates), `/history/sync`
   (all garages' raw samples newer than `since`, for incremental client sync),
-  `/stats` (a cheap read of the precomputed `stats_cells`).
+  `/stats` (a cheap read of the precomputed `stats_cells`, including a
+  `generated_at` the client footer surfaces, flagged stale past ~a week as a
+  dead-cron alarm). `POST /admin/rebuild-stats` runs the rebuild on demand
+  (bearer token vs. the `ADMIN_TOKEN` secret, fails closed when unset) to
+  bootstrap baselines before the first weekly cron. `just worker-rotate-token`
+  sets the secret + `.env`; `just worker-rebuild-stats` invokes it.
 - **Client cache** (`site/history.js`): IndexedDB stores raw samples (`samples`,
   keyed `[garage_id, ts]`) plus a cache of server bucket aggregates and stats.
   On open it syncs forward from its max `ts`, backfilling only a trailing raw

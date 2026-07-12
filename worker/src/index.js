@@ -48,12 +48,16 @@ export default {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
     }
-    if (request.method !== "GET") {
-      return json({ error: "method not allowed" }, 405);
-    }
 
     const url = new URL(request.url);
     try {
+      // Authenticated, mutating maintenance endpoint (its own method check).
+      if (url.pathname === "/admin/rebuild-stats") {
+        return await handleAdminRebuild(request, env);
+      }
+      if (request.method !== "GET") {
+        return json({ error: "method not allowed" }, 405);
+      }
       switch (url.pathname) {
         case "/history":
           return await handleHistory(url, env);
@@ -96,7 +100,11 @@ async function handleSnapshot() {
     );
   }
   const data = await upstream.json();
-  return json(data, 200, {
+  // Expose the feed's human `modified` string as a machine epoch too (same
+  // DST-correct parse used for history), so the client can show a relative
+  // "N minutes ago" without ever parsing the ambiguous local string itself
+  // (see the hard constraint in CLAUDE.md). Null when unparseable.
+  return json({ ...data, observed_at: parseFeedModified(data.modified) }, 200, {
     "Cache-Control": `public, max-age=${CLIENT_MAX_AGE_SECONDS}`,
   });
 }
@@ -445,6 +453,45 @@ async function rebuildStats(env, scheduledTimeMs) {
     .bind(computedAt)
     .run();
   console.log(`rebuildStats: ${writes.length} cells across ${garages.length} garages`);
+  return { cells: writes.length, garages: garages.length, computed_at: computedAt };
+}
+
+// --- admin -------------------------------------------------------------------
+
+// Run the stats rebuild on demand (POST /admin/rebuild-stats), so the baselines
+// can be populated before the first weekly cron fires. Gated by a bearer token
+// that MUST match the ADMIN_TOKEN secret; fails closed (403) when no token is
+// configured, so the endpoint stays inert unless deliberately enabled.
+async function handleAdminRebuild(request, env) {
+  if (request.method !== "POST") {
+    return json({ error: "method not allowed" }, 405);
+  }
+  const configured = env.ADMIN_TOKEN;
+  if (!configured) return json({ error: "admin endpoint disabled" }, 403);
+  if (!safeEqual(bearerToken(request), configured)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const summary = await rebuildStats(env, Date.now());
+  return json({ ok: true, ...summary });
+}
+
+function bearerToken(request) {
+  const header = request.headers.get("Authorization") || "";
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : null;
+}
+
+// Length-preserving constant-time compare: unlike ===, it doesn't return early
+// on the first differing character, so it doesn't leak how much of the token
+// matched via timing. The length itself is not hidden.
+function safeEqual(provided, expected) {
+  if (typeof provided !== "string" || typeof expected !== "string") return false;
+  if (provided.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < provided.length; i++) {
+    diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 // Linear-interpolated percentile over a pre-sorted array. p in [0,1].
@@ -498,4 +545,5 @@ export {
   computeCells,
   cronAction,
   retentionCutoffSec,
+  safeEqual,
 };
