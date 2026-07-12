@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+    # Let releases age before adopting them, as a defense against compromised
+    # or malicious publishes. Longer window for major bumps.
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    groups:
+      github-actions:
+        patterns:
+          - "*"

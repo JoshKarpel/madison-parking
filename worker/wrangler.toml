@@ -1,0 +1,7 @@
+name = "madison-parking"
+main = "src/index.js"
+compatibility_date = "2026-07-11"
+
+# Free-tier Worker. No KV, no Durable Objects, no bindings needed — it just
+# proxies one upstream JSON endpoint and adds CORS + caching.
+workers_dev = true
