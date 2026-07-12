@@ -13,7 +13,7 @@ No framework, no bundler. Vanilla JS + ES modules deployed as raw static files.
 - **`site/`** — the PWA. Renders instantly from `localStorage`-cached last-known
   data, then fetches fresh from the Worker. Garages show as one full-width list
   in a user-adjustable order: reorder with the ▲▼ arrows, and minimize any garage
-  you don't need with − to a compact row at the bottom (tap the row to restore
+  you don't need with − to a compact row at the bottom (tap its ＋ to restore
   it). Each garage links to Google Maps (🗺️) and can carry a landmark note, and a
   chart button (📈/📉/〰️, mirroring the short-term trend) expands an inline trend
   graph in place. While open and visible it auto-refreshes on a timer
@@ -106,7 +106,7 @@ deploy`, applying D1 migrations first).
    open, and works offline with the last-known numbers.
 
 Reorder garages with the ▲▼ arrows and minimize the ones you don't need with −
-(tap a minimized row to restore it). Tap 🗺️ to open a garage in Google Maps, and
+(tap a minimized row's ＋ to restore it). Tap 🗺️ to open a garage in Google Maps, and
 the chart button for its trends. Your order and which garages are minimized are
 stored only on your own phone (`localStorage`), so you and your partner can each
 arrange your own: no accounts, no sync.

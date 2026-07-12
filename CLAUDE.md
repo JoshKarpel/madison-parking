@@ -83,6 +83,11 @@ full cards, and the row's `＋` button restores it (moving it to the end
 of the order so it lands at the bottom of the full cards). New feed IDs append to
 the order and render full by default.
 
+The footer's help paragraph (`index.html`) names these controls in prose (which
+glyph does what, how to reorder/minimize/restore). When you change a control (the
+button, its glyph, or its gesture), update that paragraph to match: it drifts
+silently because nothing enforces the correspondence.
+
 A chart-toggle emoji button in the card's bottom-right corner toggles its
 **trend view inline** in place (tap again to collapse); at most one is expanded
 (`expandedId`). Its glyph mirrors the short-term trend (📈 emptying / 📉 filling
