@@ -58,7 +58,7 @@ fabricated timestamp), keeping collection idempotent.
   than `since`, as compact `[garage_id, ts, available]` tuples, paginated via a
   `complete` flag. This is what the client polls to top up its local cache.
 - `GET /stats?garage=<id>` returns the garage's estimated `capacity` (for the
-  fullness color and "≈N% full" readout), the precomputed per-`(day_of_week,
+  fullness color and "≈N% free" readout), the precomputed per-`(day_of_week,
   hour)` percentile baselines (`p01, p10, p25, p50, p75`, for the slot-comparison
   tidbit and the chart's "typical" overlay), and `generated_at` (when the stats
   were last rebuilt). A cheap read of `stats_cells` + `stats_garage`; see below
@@ -79,19 +79,20 @@ a per-request full scan would blow).
 ### Capacity estimate → the fullness headline (`stats_garage`)
 
 The card's headline answers "could I park here right now?" by coloring the card
-and filling its background to how full the garage is. That needs a total to
-divide by, and the feed reports none, so we **estimate** each garage's capacity:
+and filling its background to how much room is left (a longer fill = more open).
+That needs a total to divide by, and the feed reports none, so we **estimate**
+each garage's capacity:
 
 - **A high-water mark of availability.** A downtown ramp empties out overnight, so
   the emptiest it's observed approximates its total. We take the 99th percentile
   of `available_spaces` (`estimateCapacity`), not the raw max, so a single stray
   high reading can't inflate the estimate. By construction the live count can sit
-  above p99 (~1% of readings); the client clamps occupancy to `[0, 100]`, so that
-  reads as "≈0% full", never a nonsensical value.
+  above p99 (~1% of readings); the client clamps the available share to
+  `[0, 100]`, so that reads as "≈100% free", never a nonsensical value.
 - **Over a trailing ~30-day window,** not all history (`CAPACITY_WINDOW_SECONDS`).
   Capacity can actually change (a floor closing), so a trailing window lets the
   estimate follow it instead of pinning a value that no longer holds.
-- **Always an estimate.** The client labels it "≈N% full (est.)" and never shows
+- **Always an estimate.** The client labels it "≈N% free (est.)" and never shows
   an exact capacity or a precise gauge. A garage with no estimate yet (too little
   history) renders uncolored/unfilled.
 

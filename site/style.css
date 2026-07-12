@@ -176,8 +176,8 @@ h2 {
 
 .card {
   position: relative;
-  /* Filled from the left to --fill (an occupancy %, set per card) with the band's
-     tint, to show fullness at a glance; plain surface when there's no estimate. */
+  /* Filled from the left to --fill (the available %, set per card) with the band's
+     tint, so a longer fill means more room; plain surface when there's no estimate. */
   background: linear-gradient(
     to right,
     color-mix(in srgb, var(--band-color, transparent) 20%, var(--surface)) 0 var(--fill, 0%),
@@ -301,9 +301,9 @@ h2 {
   border-color: var(--band-color);
 }
 
-/* The headline fullness estimate under the count; the card's band color carries
-   the at-a-glance read, this gives the number. */
-.card .fullness {
+/* The headline availability estimate under the count; the card's band color and
+   background fill carry the at-a-glance read, this gives the number. */
+.card .availability {
   margin-top: 0.1rem;
   font-size: 0.8rem;
   font-weight: 600;

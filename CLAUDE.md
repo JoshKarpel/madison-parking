@@ -43,9 +43,10 @@ the client is purely a reader (it never collects data itself).
   empties out overnight, so its emptiest observed state approximates its total),
   computed by the weekly cron and stored per garage in `stats_garage`, served on
   `/stats` as `capacity`. The **card headline answers "could I park here right
-  now?"**: `classifyFullness`/`occupancyPercent` (`site/coloring.js`) color the
-  card by estimated fullness and fill its background left-to-right to the
-  occupancy percent, with an "≈N% full (est.)" line. Always label it an estimate;
+  now?"**: `classifyFullness`/`freePercent` (`site/coloring.js`) color the card by
+  estimated fullness and fill its background left-to-right to the *available*
+  percent (a longer fill = more room), with an "≈N% free (est.)" line. Always
+  label it an estimate;
   never present an exact capacity or a precise gauge. A garage with no capacity
   estimate yet renders **uncolored/unfilled**. How the current count compares to
   the garage's *own history* for the current `(day_of_week, hour)` is a
@@ -116,7 +117,7 @@ fullness coloring, and the slot-comparison tidbit. Full detail in
   (`CAPACITY_WINDOW_SECONDS`, `estimateCapacity`). p99 not the raw max, to shrug
   off a stray high reading; a trailing window not all history, so the estimate
   follows a real capacity change (a floor closing). It powers the "could I park?"
-  fullness color and "≈N% full" readout, always labeled an estimate.
+  fullness color and "≈N% free" readout, always labeled an estimate.
 - **Stats baselines** (`stats_cells` table): the weekly cron precomputes, over
   *all* retained history, each garage's `(day_of_week, hour)` percentiles
   (`p01, p10, p25, p50, p75`, local Central), pooling each cell with the adjacent
@@ -207,7 +208,7 @@ Recipes live in the `justfile` (`just --list`):
 `test/` holds a no-framework harness (`harness.mjs`) run by `test/run.mjs`
 (`just test`), covering the pure logic: the Worker's timestamp/timezone parsing,
 percentiles, capacity estimate, cron dispatch and retention (`worker/src/index.js`
-exports these); the client's fullness bands and occupancy percent, slot-comparison
+exports these); the client's fullness bands and free percent, slot-comparison
 bands, and busiest-hour forecast (`site/coloring.js`), the recent-trend classifier
 and relative-time/stats-freshness helpers (`site/history.js`); and the service
 worker's offline fetch fallback (loaded into a `vm` with mocked globals). Only

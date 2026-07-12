@@ -15,7 +15,7 @@ import {
 import { BUILD_ID } from "./version.js";
 import {
   classifyFullness,
-  occupancyPercent,
+  freePercent,
   comparisonLabel,
   forecastLabel,
   localCell,
@@ -193,7 +193,7 @@ function cellsFor(id) {
 }
 
 // A garage's estimated total capacity, or null until stats have loaded (or if the
-// Worker has no estimate for it yet). Drives the fullness color and "% full".
+// Worker has no estimate for it yet). Drives the fullness color and "% free".
 function capacityFor(id) {
   const stats = statsByGarage.get(id);
   return stats && typeof stats.capacity === "number" ? stats.capacity : null;
@@ -328,12 +328,13 @@ function makeCard(entry, { minimized, index, total }) {
   // Estimated fullness against the garage's high-water capacity estimate — the
   // headline "could I park here?" figure. Labeled an estimate; absent (like the
   // color) until a capacity estimate exists for this garage.
-  const occupancy = occupancyPercent(entry.count, capacityFor(entry.id));
-  if (occupancy != null) {
-    card.style.setProperty("--fill", `${occupancy}%`);
+  const free = freePercent(entry.count, capacityFor(entry.id));
+  if (free != null) {
+    // Fill the background with the available share, so a longer fill = more room.
+    card.style.setProperty("--fill", `${free}%`);
     const el = document.createElement("div");
-    el.className = "fullness";
-    el.textContent = `≈${occupancy}% full (est.)`;
+    el.className = "availability";
+    el.textContent = `≈${free}% free (est.)`;
     summary.append(el);
   }
 

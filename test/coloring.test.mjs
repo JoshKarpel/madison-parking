@@ -2,7 +2,7 @@ import { test, eq } from "./harness.mjs";
 import {
   classify,
   classifyFullness,
-  occupancyPercent,
+  freePercent,
   comparisonLabel,
   describeWhen,
   busiestUpcomingHour,
@@ -40,11 +40,11 @@ test("classifyFullness returns null without a count or a capacity estimate", () 
   eq(classifyFullness(300, 0), null);
 });
 
-test("occupancyPercent is the occupied share, rounded and clamped", () => {
-  eq(occupancyPercent(150, 600), 75); // (600-150)/600
-  eq(occupancyPercent(0, 480), 100); // full
-  eq(occupancyPercent(500, 480), 0); // count above the estimate clamps, not negative
-  eq(occupancyPercent(200, null), null);
+test("freePercent is the available share, rounded and clamped", () => {
+  eq(freePercent(150, 600), 25); // 150/600 open
+  eq(freePercent(0, 480), 0); // no room
+  eq(freePercent(500, 480), 100); // count above the estimate clamps, not over 100
+  eq(freePercent(200, null), null);
 });
 
 // --- tidbit: unusual for this (day, hour)? -----------------------------------

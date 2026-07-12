@@ -31,8 +31,8 @@ The upstream data is **vacancy counts only** — the feed reports no total
 capacity. So the app *estimates* each garage's capacity (a high-water mark of
 availability over recent history) and uses it for the headline question, "could I
 park here right now?": each card is colored and its background filled left-to-right
-by how full the garage is, with an "≈N% full (est.)" line — always labeled an
-estimate, never an exact gauge. How the current count compares to that garage's
+by how much room is left (a longer fill = more open), with an "≈N% free (est.)"
+line — always labeled an estimate, never an exact gauge. How the current count compares to that garage's
 *own* history for the day-of-week and hour is a smaller secondary tidbit ("busier
 than usual for a Sunday afternoon"), for spotting unusual conditions. A garage
 with no capacity estimate yet renders uncolored. See

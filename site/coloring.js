@@ -4,7 +4,7 @@
 // 1. Headline — "could I park here right now?": how full the garage is against an
 //    ESTIMATE of its total capacity (the Worker derives capacity as a high-water
 //    mark of availability; there is no real capacity figure in the feed). Drives
-//    the card color and the "≈N% full" readout.
+//    the card color, the background fill, and the "≈N% free" readout.
 // 2. Tidbit — "is this unusual for the time?": where the current count sits in the
 //    garage's own history for this (day_of_week, hour). A small comparative line
 //    for spotting out-of-the-ordinary conditions, deliberately NOT the color.
@@ -35,12 +35,12 @@ export function classifyFullness(available, capacity) {
   return { band: bucket.band, phrase: bucket.phrase };
 }
 
-// Estimated share of the garage occupied right now (0..100), or null when the
+// Estimated share of the garage still open right now (0..100), or null when the
 // inputs don't support it. Clamped: a live count can momentarily exceed the
-// trailing-window capacity estimate, which would otherwise read as negative.
-export function occupancyPercent(available, capacity) {
+// trailing-window capacity estimate (p99), which would otherwise read over 100%.
+export function freePercent(available, capacity) {
   if (available == null || !capacity || capacity <= 0) return null;
-  const pct = Math.round(((capacity - available) / capacity) * 100);
+  const pct = Math.round((available / capacity) * 100);
   return Math.max(0, Math.min(100, pct));
 }
 
