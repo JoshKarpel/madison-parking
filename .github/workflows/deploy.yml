@@ -71,6 +71,11 @@ jobs:
       # here are additive, so running them before the new code is safe.
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v4.0.0
+        # Surface wrangler's full API error detail in the job log instead of only
+        # its on-runner log file, so failures (e.g. a Cloudflare API error code)
+        # are visible in CI.
+        env:
+          WRANGLER_LOG: debug
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           workingDirectory: worker
