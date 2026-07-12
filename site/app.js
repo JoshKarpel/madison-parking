@@ -92,6 +92,9 @@ const els = {
   cards: document.getElementById("cards"),
   refreshIndicator: document.getElementById("refresh-indicator"),
   statsStatus: document.getElementById("stats-status"),
+  buildStamp: document.getElementById("build-stamp"),
+  cacheSize: document.getElementById("cache-size"),
+  resetData: document.getElementById("reset-data"),
 };
 
 function loadCachedData() {
@@ -758,6 +761,79 @@ document.addEventListener("visibilitychange", () => {
   else stopPolling();
 });
 
+// --- Debug menu --------------------------------------------------------------
+// The build stamp identifies which deploy this client is actually running, so a
+// client stuck on a stale shell is obvious. The reset button is the escape hatch
+// for a wedged cache: it clears every layer of client state a fresh (incognito)
+// context wouldn't have, then reloads into a clean fetch.
+els.buildStamp.textContent = `build ${BUILD_ID}`;
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(1)} ${units[unit]}`;
+}
+
+async function updateCacheSize() {
+  if (!navigator.storage?.estimate) {
+    els.cacheSize.textContent = "storage estimate unavailable";
+    return;
+  }
+  const { usage } = await navigator.storage.estimate();
+  els.cacheSize.textContent = `cache ~${formatBytes(usage ?? 0)}`;
+}
+
+// Refresh the estimate each time the menu opens, so it reflects the latest sync.
+els.cacheSize.closest("details").addEventListener("toggle", (event) => {
+  if (event.target.open) updateCacheSize();
+});
+
+async function resetAppData() {
+  els.resetData.disabled = true;
+  els.resetData.textContent = "Resetting…";
+
+  try {
+    localStorage.clear();
+  } catch {}
+
+  if (window.indexedDB?.databases) {
+    const dbs = await indexedDB.databases().catch(() => []);
+    await Promise.all(
+      dbs
+        .map((d) => d.name)
+        .filter(Boolean)
+        .map(
+          (name) =>
+            new Promise((resolve) => {
+              const req = indexedDB.deleteDatabase(name);
+              req.onsuccess = req.onerror = req.onblocked = () => resolve();
+            })
+        )
+    );
+  }
+
+  if (window.caches) {
+    const keys = await caches.keys().catch(() => []);
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  }
+
+  if ("serviceWorker" in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
+    await Promise.all(regs.map((r) => r.unregister()));
+  }
+
+  // Bypass the browser HTTP cache too, so the reload refetches the shell.
+  location.reload();
+}
+
+els.resetData.addEventListener("click", resetAppData);
+
 if ("serviceWorker" in navigator) {
   // When a newly-deployed worker activates and takes control, reload once so
   // the fresh app applies immediately. Guarded against the first install (no
@@ -773,6 +849,10 @@ if ("serviceWorker" in navigator) {
   let swRegistration = null;
   window.addEventListener("load", async () => {
     swRegistration = await navigator.serviceWorker.register("./sw.js");
+    // Proactively check for a new worker on every cold launch, rather than
+    // relying on the browser's throttled implicit update-on-register. A found
+    // worker installs and triggers the controllerchange reload above.
+    swRegistration.update().catch(() => {});
   });
 
   // Registration only checks for a new worker once, so a long-open session

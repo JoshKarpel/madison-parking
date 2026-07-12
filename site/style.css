@@ -435,6 +435,37 @@ footer a {
   font-weight: 600;
 }
 
+.debug {
+  margin: 1rem 0 0;
+  font-size: 0.75rem;
+}
+
+.debug summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.build-stamp {
+  margin: 0.5rem 0 0;
+  font-family: ui-monospace, monospace;
+}
+
+.reset-data {
+  margin: 0.5rem 0 0;
+  padding: 0.4rem 0.8rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--muted);
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.reset-data:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* --- Inline trend view ---------------------------------------------------- */
 /* The view a card expands into in place. Full width within the card, below the
    count summary. */
