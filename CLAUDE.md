@@ -113,8 +113,10 @@ each a footer `<select>`:
 
 - **theme** (`data-theme`): `default` (rounded, sans-serif), `terminal`
   (monospace CRT: self-hosted JetBrains Mono, square 2px borders,
-  green/amber/grey-white phosphor), or `geocities` (a 1996-homepage parody: Comic
-  Sans, ridge borders, neon clash, tiled background, rainbow header, blink).
+  green/amber/grey-white phosphor), `geocities` (a 1996-homepage parody: Comic
+  Sans, ridge borders, neon clash, tiled background, rainbow header, blink,
+  pixel flamingo), or `windows` (Windows 98: Tahoma, silver panels on a teal
+  desktop, a box-shadow bevel adapted from 98.css; dark = High Contrast Black).
   **"default" is the attribute's absence**, so CSS only ever names non-default
   themes.
 - **appearance** (`data-scheme`): light/dark, defaulting to the system

@@ -20,13 +20,14 @@
     <script>
       (function () {
         var el = document.documentElement;
-        var scheme;
+        var theme, scheme;
         try {
-          if (localStorage.getItem("parking:theme") === "terminal") {
-            el.dataset.theme = "terminal";
-          }
+          theme = localStorage.getItem("parking:theme");
           scheme = localStorage.getItem("parking:color-scheme");
         } catch (e) {}
+        // Any non-default stored theme applies pre-paint. An unknown value has no
+        // matching CSS, so it harmlessly renders as default; app.js normalizes it.
+        if (theme && theme !== "default") el.dataset.theme = theme;
         if (scheme !== "light" && scheme !== "dark") {
           scheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
         }
@@ -73,6 +74,7 @@
           <option value="default">Default</option>
           <option value="terminal">Terminal</option>
           <option value="geocities">GeoCities</option>
+          <option value="windows">Windows 98</option>
         </select>
       </p>
       <p class="pref-row">

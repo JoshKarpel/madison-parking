@@ -177,6 +177,18 @@
   background-size: 170px 170px;
 }
 
+/* An obligatory pink pixel-art lawn flamingo, perched above the footer. */
+:root[data-theme="geocities"] footer::before {
+  content: "";
+  display: block;
+  width: 52px;
+  height: 60px;
+  margin: 0.5rem auto;
+  image-rendering: pixelated;
+  background: center / contain no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='16' shape-rendering='crispEdges'%3E%3Cg fill='%23ff6699'%3E%3Crect x='3' y='1' width='1' height='1'/%3E%3Crect x='4' y='1' width='1' height='1'/%3E%3Crect x='3' y='2' width='1' height='1'/%3E%3Crect x='4' y='2' width='1' height='1'/%3E%3Crect x='5' y='2' width='1' height='1'/%3E%3Crect x='4' y='3' width='1' height='1'/%3E%3Crect x='5' y='3' width='1' height='1'/%3E%3Crect x='5' y='4' width='1' height='1'/%3E%3Crect x='6' y='4' width='1' height='1'/%3E%3Crect x='6' y='5' width='1' height='1'/%3E%3Crect x='7' y='5' width='1' height='1'/%3E%3Crect x='6' y='6' width='1' height='1'/%3E%3Crect x='7' y='6' width='1' height='1'/%3E%3Crect x='8' y='6' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='1'/%3E%3Crect x='6' y='7' width='1' height='1'/%3E%3Crect x='7' y='7' width='1' height='1'/%3E%3Crect x='8' y='7' width='1' height='1'/%3E%3Crect x='9' y='7' width='1' height='1'/%3E%3Crect x='10' y='7' width='1' height='1'/%3E%3Crect x='4' y='8' width='1' height='1'/%3E%3Crect x='5' y='8' width='1' height='1'/%3E%3Crect x='6' y='8' width='1' height='1'/%3E%3Crect x='7' y='8' width='1' height='1'/%3E%3Crect x='10' y='8' width='1' height='1'/%3E%3Crect x='11' y='8' width='1' height='1'/%3E%3Crect x='4' y='9' width='1' height='1'/%3E%3Crect x='5' y='9' width='1' height='1'/%3E%3Crect x='6' y='9' width='1' height='1'/%3E%3Crect x='7' y='9' width='1' height='1'/%3E%3Crect x='10' y='9' width='1' height='1'/%3E%3Crect x='11' y='9' width='1' height='1'/%3E%3Crect x='5' y='10' width='1' height='1'/%3E%3Crect x='6' y='10' width='1' height='1'/%3E%3Crect x='7' y='10' width='1' height='1'/%3E%3Crect x='8' y='10' width='1' height='1'/%3E%3Crect x='9' y='10' width='1' height='1'/%3E%3Crect x='10' y='10' width='1' height='1'/%3E%3Crect x='6' y='11' width='1' height='1'/%3E%3Crect x='9' y='11' width='1' height='1'/%3E%3Crect x='6' y='12' width='1' height='1'/%3E%3Crect x='9' y='12' width='1' height='1'/%3E%3Crect x='6' y='13' width='1' height='1'/%3E%3Crect x='9' y='13' width='1' height='1'/%3E%3Crect x='5' y='14' width='1' height='1'/%3E%3Crect x='6' y='14' width='1' height='1'/%3E%3Crect x='9' y='14' width='1' height='1'/%3E%3Crect x='10' y='14' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23d84f86'%3E%3Crect x='8' y='8' width='1' height='1'/%3E%3Crect x='9' y='8' width='1' height='1'/%3E%3Crect x='8' y='9' width='1' height='1'/%3E%3Crect x='9' y='9' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23ffb300'%3E%3Crect x='1' y='2' width='1' height='1'/%3E%3Crect x='2' y='2' width='1' height='1'/%3E%3C/g%3E%3Crect x='1' y='3' width='1' height='1' fill='%23cc5500'/%3E%3Crect x='4' y='2' width='1' height='1' fill='%23000000'/%3E%3C/svg%3E");
+}
+
 /* Rainbow header and a blinking status: the two most 1996 things possible. */
 :root[data-theme="geocities"] h1 {
   background: linear-gradient(90deg, #ff0000, #ff9900, #ffee00, #00cc00, #0066ff, #cc00ff);
@@ -201,6 +213,78 @@
   :root[data-theme="geocities"] .status[data-state="live"] {
     animation: none;
   }
+}
+
+/* --- Windows 98 theme ------------------------------------------------------ */
+/* Silver panels on a teal desktop, Tahoma, square corners, and the signature
+   layered box-shadow bevel (raised for cards/buttons, sunken for a pressed
+   control) adapted from 98.css (jdan.github.io/98.css). Borders are 0 width; the
+   bevel is drawn entirely with box-shadow, so the four bevel colors are theme
+   variables that the dark (High Contrast Black) scheme re-tints. Light/dark
+   follows the system like the other themes. */
+:root[data-theme="windows"] {
+  --font-family: "Tahoma", "MS Sans Serif", "Segoe UI", Verdana, sans-serif;
+  --border-width: 0;
+  --radius: 0;
+  --radius-sm: 0;
+  --radius-pill: 0;
+
+  --bg: #008080;
+  --surface: #c0c0c0;
+  --text: #000000;
+  --muted: #3a3a3a;
+  --border: #808080;
+  --green: #008000;
+  --green-bg: #d4d0c8;
+  --amber: #8a6d00;
+  --amber-bg: #d4d0c8;
+  --red: #a80000;
+  --red-bg: #d4d0c8;
+  --blue: #000080;
+  --star: #808000;
+
+  --bevel-light: #ffffff;
+  --bevel-face: #dfdfdf;
+  --bevel-shadow: #808080;
+  --bevel-dark: #0a0a0a;
+}
+
+:root[data-theme="windows"][data-scheme="dark"] {
+  --bg: #000000;
+  --surface: #202020;
+  --text: #ffffff;
+  --muted: #b0b0b0;
+  --border: #808080;
+  --green: #00ff00;
+  --green-bg: #202020;
+  --amber: #ffff00;
+  --amber-bg: #202020;
+  --red: #ff3030;
+  --red-bg: #202020;
+  --blue: #00ffff;
+  --star: #ffff00;
+
+  --bevel-light: #d4d0c8;
+  --bevel-face: #808080;
+  --bevel-shadow: #404040;
+  --bevel-dark: #000000;
+}
+
+/* The raised bevel: light top-left edges, dark bottom-right edges, stacked at
+   1px and 2px offsets. Applied to the "window" cards and to buttons/controls. */
+:root[data-theme="windows"] .card,
+:root[data-theme="windows"] .pref-select,
+:root[data-theme="windows"] .reset-data,
+:root[data-theme="windows"] .graph-range {
+  box-shadow: inset -1px -1px var(--bevel-dark), inset 1px 1px var(--bevel-light),
+    inset -2px -2px var(--bevel-shadow), inset 2px 2px var(--bevel-face);
+}
+
+/* The sunken (pressed) bevel: the same colors, swapped, for the active range. */
+:root[data-theme="windows"] .graph-range.active,
+:root[data-theme="windows"] .reset-data:active {
+  box-shadow: inset -1px -1px var(--bevel-light), inset 1px 1px var(--bevel-dark),
+    inset -2px -2px var(--bevel-face), inset 2px 2px var(--bevel-shadow);
 }
 
 * {
