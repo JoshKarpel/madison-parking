@@ -111,17 +111,19 @@ The look is fully CSS-variable driven, so a theme is a values swap. Two
 independent preferences, each a `<html>` attribute the stylesheet keys off and
 each a footer `<select>`:
 
-- **theme** (`data-theme`): `default` (rounded, sans-serif) or `terminal`
+- **theme** (`data-theme`): `default` (rounded, sans-serif), `terminal`
   (monospace CRT: self-hosted JetBrains Mono, square 2px borders,
-  green/amber/grey-white phosphor). **"default" is the attribute's absence**, so
-  CSS only ever names non-default themes.
+  green/amber/grey-white phosphor), or `geocities` (a 1996-homepage parody: Comic
+  Sans, ridge borders, neon clash, tiled background, rainbow header, blink).
+  **"default" is the attribute's absence**, so CSS only ever names non-default
+  themes.
 - **appearance** (`data-scheme`): light/dark, defaulting to the system
   preference or forced. It is **always resolved to `light`/`dark` by JS** (never
   left to a `prefers-color-scheme` query), so a forced choice can override the
   OS and the stylesheet needs no media query.
 
 `site/style.css` defines the light palette + structural knobs (`--font-family`,
-`--border-width`, `--radius*`) in `:root`, the dark palette in
+`--border-width`, `--border-style`, `--radius*`) in `:root`, the dark palette in
 `:root[data-scheme="dark"]`, and the terminal overrides in
 `:root[data-theme="terminal"]` / `...[data-scheme="dark"]`. `site/theme.js` is
 the single source of truth: valid ids (`THEMES`, `COLOR_SCHEMES`), the
@@ -130,7 +132,16 @@ resolve the scheme, repoint the `theme-color` meta). The head of `index.html`
 has a tiny inline script that applies both stored choices *before first paint*
 to avoid a flash; `app.js` owns the selectors, persistence (`parking:theme`,
 `parking:color-scheme`), and re-resolving on a system light/dark change. A new
-theme = a `THEMES` entry, a CSS block, and an `<option>`.
+theme = a `THEMES` entry, a `THEME_COLORS` entry, a light + a dark CSS block, and
+an `<option>` (plus a font in `site/fonts/` + `@font-face` + the `sw.js` SHELL if
+it needs one).
+
+**Specificity invariant:** the default-dark block `:root[data-scheme="dark"]`
+(0,2,0) and a theme's light block `:root[data-theme="X"]` (0,2,0) both match when
+that theme is active in dark mode, so a theme's dark block
+`:root[data-theme="X"][data-scheme="dark"]` (0,3,0) MUST redefine **every**
+palette variable it wants to change; anything it leaves out falls through to the
+default-dark slate palette, not the theme's light value.
 
 ## History (collection, API, client cache)
 
@@ -204,9 +215,8 @@ touch caching, preserve
 this: changing shell assets without changing `sw.js` means clients keep serving
 stale files. The `SHELL` list must include every ES module the app imports
 (`app.js`, `version.js`, `history.js`, `coloring.js`, `chart.js`, `graph.js`,
-`garages.js`, `theme.js`) plus the self-hosted font
-(`fonts/JetBrainsMono.woff2`); a module or asset missing from it won't be
-available offline.
+`garages.js`, `theme.js`) plus the self-hosted theme fonts
+(`fonts/*.woff2`); a module or asset missing from it won't be available offline.
 
 A second stamp, `__ICON_HASH__`, versions the PWA icon URLs. The icon
 references in `manifest.webmanifest`, `index.html`, and the `sw.js` `SHELL`

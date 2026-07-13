@@ -6,6 +6,25 @@
   font-display: swap;
 }
 
+/* Comic Neue: an SIL OFL Comic Sans look-alike, shipped so the GeoCities theme's
+   font is guaranteed everywhere (real Comic Sans MS, kept first in the stack,
+   still wins where the OS has it). */
+@font-face {
+  font-family: "Comic Neue";
+  src: url("./fonts/ComicNeue-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Comic Neue";
+  src: url("./fonts/ComicNeue-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #f8fafc;
   --surface: #ffffff;
@@ -24,6 +43,7 @@
   /* Structural knobs a theme can swap. Defaults reproduce the original look. */
   --font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --border-width: 1px;
+  --border-style: solid;
   --radius: 1rem;
   --radius-sm: 0.6rem;
   --radius-pill: 999px;
@@ -95,6 +115,92 @@
   --red-bg: #2e0f0d;
   --blue: #9fb0a0;
   --star: #ffb000;
+}
+
+/* --- GeoCities theme ------------------------------------------------------- */
+/* A loving parody of a 1996 personal homepage: Comic Sans, ridged bevel borders,
+   clashing neon, a tiled polka-dot (light) / starfield (dark) background, rainbow
+   header, and a blinking status. Peak web 1.0. Same variable-swap machinery as
+   the other themes; the extra flourishes are scoped rules below the palettes. */
+:root[data-theme="geocities"] {
+  /* Comic Sans MS where the OS has it, else the shipped Comic Neue, always. */
+  --font-family: "Comic Sans MS", "Comic Neue", cursive;
+  --border-width: 4px;
+  --border-style: ridge;
+  --radius: 0;
+  --radius-sm: 0;
+  --radius-pill: 0;
+
+  --bg: #ffcc00;
+  --surface: #ffffff;
+  --text: #000080;
+  --muted: #660099;
+  --border: #ff0099;
+  --green: #009900;
+  --green-bg: #ccffcc;
+  --amber: #ff6600;
+  --amber-bg: #ffe0b3;
+  --red: #ee0000;
+  --red-bg: #ffcccc;
+  --blue: #0000ee;
+  --star: #ff00ff;
+}
+
+:root[data-theme="geocities"][data-scheme="dark"] {
+  --bg: #000022;
+  --surface: #12124a;
+  --text: #00ff00;
+  --muted: #ffff66;
+  --border: #ff00ff;
+  --green: #00ff66;
+  --green-bg: #003322;
+  --amber: #ffcc00;
+  --amber-bg: #3a2a00;
+  --red: #ff3366;
+  --red-bg: #3a0011;
+  --blue: #66ccff;
+  --star: #ffff00;
+}
+
+/* Tiled background: the real GeoCities move is a chunky, obviously-repeating
+   texture tile, not a tidy dot grid. A clashing geometric motif by day; an
+   irregular twinkling starfield by night (this is Area51/Shadowlands, after
+   all). Baked as SVG data-URI tiles over the base color. */
+:root[data-theme="geocities"] body {
+  background-color: var(--bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='104' height='104'%3E%3Ccircle cx='22' cy='24' r='12' fill='%23ff0099'/%3E%3Ccircle cx='74' cy='68' r='13' fill='%2300cccc'/%3E%3Crect x='62' y='12' width='22' height='22' fill='%230000ee' transform='rotate(18 73 23)'/%3E%3Cpolygon points='38,44 42,57 56,57 45,65 49,78 38,70 27,78 31,65 20,57 34,57' fill='%23ff6600'/%3E%3Cpath d='M6 88 q9 -14 18 0 q9 14 18 0' stroke='%239900cc' stroke-width='4' fill='none'/%3E%3C/svg%3E");
+  background-size: 104px 104px;
+}
+
+:root[data-theme="geocities"][data-scheme="dark"] body {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='170'%3E%3Cg fill='%23ffffff'%3E%3Ccircle cx='18' cy='28' r='1.6'/%3E%3Ccircle cx='52' cy='14' r='1'/%3E%3Ccircle cx='96' cy='40' r='2'/%3E%3Ccircle cx='138' cy='22' r='1.3'/%3E%3Ccircle cx='30' cy='84' r='1'/%3E%3Ccircle cx='72' cy='100' r='1.8'/%3E%3Ccircle cx='124' cy='88' r='1.2'/%3E%3Ccircle cx='158' cy='128' r='1.6'/%3E%3Ccircle cx='24' cy='150' r='1.3'/%3E%3Ccircle cx='92' cy='148' r='1'/%3E%3Ccircle cx='60' cy='56' r='1.1'/%3E%3Ccircle cx='112' cy='136' r='1.4'/%3E%3C/g%3E%3Cg stroke='%23ffff66' stroke-width='1.2'%3E%3Cpath d='M96 33 v14 M89 40 h14'/%3E%3Cpath d='M158 121 v14 M151 128 h14'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 170px 170px;
+}
+
+/* Rainbow header and a blinking status: the two most 1996 things possible. */
+:root[data-theme="geocities"] h1 {
+  background: linear-gradient(90deg, #ff0000, #ff9900, #ffee00, #00cc00, #0066ff, #cc00ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+}
+
+:root[data-theme="geocities"] .status[data-state="live"] {
+  animation: geocities-blink 1s steps(1) infinite;
+}
+
+@keyframes geocities-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Respect a reduced-motion preference: keep the palette, drop the blink. */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="geocities"] .status[data-state="live"] {
+    animation: none;
+  }
 }
 
 * {
@@ -248,7 +354,7 @@ h2 {
     color-mix(in srgb, var(--band-color, transparent) 20%, var(--surface)) 0 var(--fill, 0%),
     var(--surface) var(--fill, 0%) 100%
   );
-  border: var(--border-width) solid var(--border);
+  border: var(--border-width) var(--border-style) var(--border);
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
@@ -517,7 +623,7 @@ footer a {
   font: inherit;
   color: var(--text);
   background: var(--surface);
-  border: var(--border-width) solid var(--border);
+  border: var(--border-width) var(--border-style) var(--border);
   border-radius: var(--radius-sm);
   padding: 0.25rem 0.4rem;
   cursor: pointer;
@@ -559,7 +665,7 @@ footer a {
   font: inherit;
   color: inherit;
   background: transparent;
-  border: var(--border-width) solid var(--muted);
+  border: var(--border-width) var(--border-style) var(--muted);
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
@@ -592,7 +698,7 @@ footer a {
   flex: 1;
   padding: 0.5rem 0;
   background: var(--bg);
-  border: var(--border-width) solid var(--border);
+  border: var(--border-width) var(--border-style) var(--border);
   border-radius: var(--radius-sm);
   color: var(--muted);
   font-size: 0.9rem;

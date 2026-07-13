@@ -14,7 +14,7 @@ export const DEFAULT_THEME = "default";
 
 // The selectable themes. New themes append here and get a matching CSS block and
 // an <option> in index.html; nothing else needs to change.
-export const THEMES = [DEFAULT_THEME, "terminal"];
+export const THEMES = [DEFAULT_THEME, "terminal", "geocities"];
 
 export const DEFAULT_COLOR_SCHEME = "system";
 
@@ -27,6 +27,7 @@ export const COLOR_SCHEMES = [DEFAULT_COLOR_SCHEME, "light", "dark"];
 const THEME_COLORS = {
   default: { light: "#66ccff", dark: "#66ccff" },
   terminal: { light: "#f4f1e6", dark: "#0a0a0a" },
+  geocities: { light: "#ffcc00", dark: "#000022" },
 };
 
 export function normalizeTheme(value) {

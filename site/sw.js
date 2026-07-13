@@ -17,6 +17,8 @@ const SHELL = [
   "./theme.js",
   "./style.css",
   "./fonts/JetBrainsMono.woff2",
+  "./fonts/ComicNeue-Regular.woff2",
+  "./fonts/ComicNeue-Bold.woff2",
   "./manifest.webmanifest",
   "./icons/icon-192.png?v=__ICON_HASH__",
   "./icons/icon-512.png?v=__ICON_HASH__",
