@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./fonts/JetBrainsMono.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #f8fafc;
   --surface: #ffffff;
@@ -12,24 +20,81 @@
   --red-bg: #fee2e2;
   --blue: #2563eb;
   --star: #f59e0b;
+
+  /* Structural knobs a theme can swap. Defaults reproduce the original look. */
+  --font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --border-width: 1px;
+  --radius: 1rem;
+  --radius-sm: 0.6rem;
+  --radius-pill: 999px;
+
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f172a;
-    --surface: #1e293b;
-    --text: #f1f5f9;
-    --muted: #94a3b8;
-    --border: #334155;
-    --green: #4ade80;
-    --green-bg: #14532d;
-    --amber: #fbbf24;
-    --amber-bg: #78350f;
-    --red: #f87171;
-    --red-bg: #7f1d1d;
-    --blue: #60a5fa;
-    --star: #fbbf24;
-  }
+/* Dark is keyed off a data-scheme attribute (set by JS to the system preference
+   by default, or a forced light/dark), not a prefers-color-scheme query, so the
+   Appearance toggle can override the OS setting. */
+:root[data-scheme="dark"] {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --border: #334155;
+  --green: #4ade80;
+  --green-bg: #14532d;
+  --amber: #fbbf24;
+  --amber-bg: #78350f;
+  --red: #f87171;
+  --red-bg: #7f1d1d;
+  --blue: #60a5fa;
+  --star: #fbbf24;
+
+  color-scheme: dark;
+}
+
+/* --- Terminal theme -------------------------------------------------------- */
+/* Monospace, square 2px borders, and an old-school CRT-monitor palette: green
+   and amber phosphor with a warm grey-white for text. Higher specificity than
+   the :root blocks above, so it wins in both light and dark without re-scoping
+   them; it follows the system light/dark like the default theme does. Light is
+   dark phosphor ink on warm paper; dark is phosphor glow on near-black. The blue
+   band has no phosphor equivalent, so --blue becomes the neutral grey-white. */
+:root[data-theme="terminal"] {
+  --font-family: "JetBrains Mono", ui-monospace, "Roboto Mono", monospace;
+  --border-width: 2px;
+  --radius: 0;
+  --radius-sm: 0;
+  --radius-pill: 0;
+
+  --bg: #f4f1e6;
+  --surface: #fbf9f0;
+  --text: #1a1a12;
+  --muted: #6a6a58;
+  --border: #cfc8b0;
+  --green: #1f7a3a;
+  --green-bg: #dbead9;
+  --amber: #9a6600;
+  --amber-bg: #f0e4c4;
+  --red: #b02a2a;
+  --red-bg: #f0d9d5;
+  --blue: #55605a;
+  --star: #9a6600;
+}
+
+:root[data-theme="terminal"][data-scheme="dark"] {
+  --bg: #0a0a0a;
+  --surface: #121410;
+  --text: #d8d8c8;
+  --muted: #7a8a7a;
+  --border: #2f3a2c;
+  --green: #3ef07a;
+  --green-bg: #0f2a17;
+  --amber: #ffb000;
+  --amber-bg: #2e2205;
+  --red: #ff5a52;
+  --red-bg: #2e0f0d;
+  --blue: #9fb0a0;
+  --star: #ffb000;
 }
 
 * {
@@ -55,7 +120,7 @@ html {
 body {
   margin: 0;
   padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-family);
   background: var(--bg);
   color: var(--text);
   overscroll-behavior-y: contain;
@@ -116,7 +181,7 @@ h1 {
   width: 64px;
   height: 4px;
   background: var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 
@@ -125,7 +190,7 @@ h1 {
   height: 100%;
   width: 0;
   background: var(--muted);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .refresh-label {
@@ -183,8 +248,8 @@ h2 {
     color-mix(in srgb, var(--band-color, transparent) 20%, var(--surface)) 0 var(--fill, 0%),
     var(--surface) var(--fill, 0%) 100%
   );
-  border: 1px solid var(--border);
-  border-radius: 1rem;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -434,6 +499,30 @@ footer a {
   text-decoration: underline;
 }
 
+.pref-row {
+  margin: 0.5rem 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.pref-row label {
+  color: var(--muted);
+  min-width: 5.5rem;
+  text-align: right;
+}
+
+.pref-select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+}
+
 /* Shown only on a phone browser that isn't already the installed PWA. */
 .install-hint {
   margin: 0.75rem 0 0;
@@ -470,8 +559,8 @@ footer a {
   font: inherit;
   color: inherit;
   background: transparent;
-  border: 1px solid var(--muted);
-  border-radius: 0.4rem;
+  border: var(--border-width) solid var(--muted);
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -503,8 +592,8 @@ footer a {
   flex: 1;
   padding: 0.5rem 0;
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-sm);
   color: var(--muted);
   font-size: 0.9rem;
   font-weight: 600;

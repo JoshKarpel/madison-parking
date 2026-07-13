@@ -22,6 +22,12 @@ import {
   cellKey,
 } from "./coloring.js";
 import { createGraphView } from "./graph.js";
+import {
+  applyTheme,
+  normalizeTheme,
+  applyColorScheme,
+  normalizeColorScheme,
+} from "./theme.js";
 
 const DEFAULT_API_URL = "https://madison-parking.josh-karpel.workers.dev";
 
@@ -81,6 +87,8 @@ const STORAGE_KEYS = {
   data: "parking:data",
   order: "parking:order",
   minimized: "parking:minimized",
+  theme: "parking:theme",
+  colorScheme: "parking:color-scheme",
 };
 
 const els = {
@@ -96,6 +104,8 @@ const els = {
   buildStamp: document.getElementById("build-stamp"),
   cacheSize: document.getElementById("cache-size"),
   resetData: document.getElementById("reset-data"),
+  themeSelect: document.getElementById("theme-select"),
+  schemeSelect: document.getElementById("scheme-select"),
 };
 
 function loadCachedData() {
@@ -808,6 +818,46 @@ if (platform && !isStandalone()) {
   els.installHint.textContent = INSTALL_HINT_TEXT[platform];
   els.installHint.hidden = false;
 }
+
+// --- Theme + appearance selection --------------------------------------------
+// The head's inline script already set the data-theme/data-scheme attributes
+// pre-paint (no flash); here we sync the selectors, apply on change, and keep
+// the theme-color meta tracking the active theme and resolved scheme.
+function persist(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage blocked: the choice still applies for this session. */
+  }
+}
+
+const storedTheme = normalizeTheme(localStorage.getItem(STORAGE_KEYS.theme));
+els.themeSelect.value = storedTheme;
+applyTheme(storedTheme);
+
+els.themeSelect.addEventListener("change", () => {
+  const theme = normalizeTheme(els.themeSelect.value);
+  persist(STORAGE_KEYS.theme, theme);
+  applyTheme(theme);
+});
+
+const storedScheme = normalizeColorScheme(localStorage.getItem(STORAGE_KEYS.colorScheme));
+els.schemeSelect.value = storedScheme;
+applyColorScheme(storedScheme);
+
+els.schemeSelect.addEventListener("change", () => {
+  const scheme = normalizeColorScheme(els.schemeSelect.value);
+  persist(STORAGE_KEYS.colorScheme, scheme);
+  applyColorScheme(scheme);
+});
+
+// A system light/dark change only moves the needle while the preference is
+// "system"; applyColorScheme re-resolves it (and is a no-op for a forced choice).
+window
+  .matchMedia?.("(prefers-color-scheme: dark)")
+  .addEventListener("change", () =>
+    applyColorScheme(normalizeColorScheme(els.schemeSelect.value))
+  );
 
 // --- Debug menu --------------------------------------------------------------
 // The build stamp identifies which deploy this client is actually running, so a

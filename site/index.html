@@ -12,6 +12,27 @@
     <link rel="icon" href="./icons/icon-192.png?v=__ICON_HASH__" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png?v=__ICON_HASH__" />
     <link rel="stylesheet" href="./style.css" />
+    <!-- Apply the saved theme and appearance before first paint so a stored
+         choice doesn't flash the default. app.js owns the rest of the switching;
+         this only needs to set the attributes the stylesheet keys off. The
+         scheme is always resolved to light/dark here (system preference unless
+         forced), so the stylesheet needs no prefers-color-scheme query. -->
+    <script>
+      (function () {
+        var el = document.documentElement;
+        var scheme;
+        try {
+          if (localStorage.getItem("parking:theme") === "terminal") {
+            el.dataset.theme = "terminal";
+          }
+          scheme = localStorage.getItem("parking:color-scheme");
+        } catch (e) {}
+        if (scheme !== "light" && scheme !== "dark") {
+          scheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        el.dataset.scheme = scheme;
+      })();
+    </script>
   </head>
   <body>
     <div id="refresh-indicator"></div>
@@ -46,6 +67,21 @@
         don't need (tap its ＋ to restore). Pull down to refresh.
       </p>
       <p id="stats-status" class="stats-status"></p>
+      <p class="pref-row">
+        <label for="theme-select">Theme</label>
+        <select id="theme-select" class="pref-select">
+          <option value="default">Default</option>
+          <option value="terminal">Terminal</option>
+        </select>
+      </p>
+      <p class="pref-row">
+        <label for="scheme-select">Appearance</label>
+        <select id="scheme-select" class="pref-select">
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </p>
       <p id="install-hint" class="install-hint" hidden></p>
       <details class="debug">
         <summary>Debug</summary>

@@ -3,6 +3,7 @@ import "./worker.test.mjs";
 import "./coloring.test.mjs";
 import "./history.test.mjs";
 import "./sw.test.mjs";
+import "./theme.test.mjs";
 import { run } from "./harness.mjs";
 
 await run();

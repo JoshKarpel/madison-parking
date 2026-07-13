@@ -105,6 +105,33 @@ with a *relative* threshold (a fraction of the start/end average, so it scales
 across small lots and large ramps); `refreshHistory` tops up the sample cache
 and recomputes trends off the live-snapshot path.
 
+## Theming
+
+The look is fully CSS-variable driven, so a theme is a values swap. Two
+independent preferences, each a `<html>` attribute the stylesheet keys off and
+each a footer `<select>`:
+
+- **theme** (`data-theme`): `default` (rounded, sans-serif) or `terminal`
+  (monospace CRT: self-hosted JetBrains Mono, square 2px borders,
+  green/amber/grey-white phosphor). **"default" is the attribute's absence**, so
+  CSS only ever names non-default themes.
+- **appearance** (`data-scheme`): light/dark, defaulting to the system
+  preference or forced. It is **always resolved to `light`/`dark` by JS** (never
+  left to a `prefers-color-scheme` query), so a forced choice can override the
+  OS and the stylesheet needs no media query.
+
+`site/style.css` defines the light palette + structural knobs (`--font-family`,
+`--border-width`, `--radius*`) in `:root`, the dark palette in
+`:root[data-scheme="dark"]`, and the terminal overrides in
+`:root[data-theme="terminal"]` / `...[data-scheme="dark"]`. `site/theme.js` is
+the single source of truth: valid ids (`THEMES`, `COLOR_SCHEMES`), the
+`normalize*` guards, and `applyTheme`/`applyColorScheme` (toggle the attribute,
+resolve the scheme, repoint the `theme-color` meta). The head of `index.html`
+has a tiny inline script that applies both stored choices *before first paint*
+to avoid a flash; `app.js` owns the selectors, persistence (`parking:theme`,
+`parking:color-scheme`), and re-resolving on a system light/dark change. A new
+theme = a `THEMES` entry, a CSS block, and an `<option>`.
+
 ## History (collection, API, client cache)
 
 The Worker records a long-term history and the client reads it for trend graphs,
@@ -177,7 +204,9 @@ touch caching, preserve
 this: changing shell assets without changing `sw.js` means clients keep serving
 stale files. The `SHELL` list must include every ES module the app imports
 (`app.js`, `version.js`, `history.js`, `coloring.js`, `chart.js`, `graph.js`,
-`garages.js`); a module missing from it won't be available offline.
+`garages.js`, `theme.js`) plus the self-hosted font
+(`fonts/JetBrainsMono.woff2`); a module or asset missing from it won't be
+available offline.
 
 A second stamp, `__ICON_HASH__`, versions the PWA icon URLs. The icon
 references in `manifest.webmanifest`, `index.html`, and the `sw.js` `SHELL`
