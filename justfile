@@ -7,6 +7,11 @@ set ignore-comments
 # e.g. `just worker-url=http://localhost:8787 worker-rebuild-stats`.
 worker-url := "https://madison-parking.josh-karpel.workers.dev"
 
+# Port for the local static-site server (serve/shot/dump). Override to run a
+# second instance without colliding with one already bound, e.g.
+# `just serve-port=8138 serve`.
+serve-port := "8137"
+
 [default]
 [doc("List available recipes")]
 list:
@@ -82,7 +87,7 @@ worker-rotate-token:
 [group('site')]
 [doc("Serve the static site locally at http://localhost:8137")]
 serve:
-    cd site && exec python3 -m http.server 8137
+    cd site && exec python3 -m http.server {{ serve-port }} --bind 127.0.0.1
 
 alias s := serve
 
@@ -95,12 +100,12 @@ chrome-flags := "--headless --disable-gpu --no-sandbox --password-store=basic --
 shot file="shot.png":
     #!/usr/bin/env bash
     set -euo pipefail
-    python3 -m http.server 8137 --directory site >/dev/null 2>&1 &
+    python3 -m http.server {{ serve-port }} --bind 127.0.0.1 --directory site >/dev/null 2>&1 &
     trap 'kill $!' EXIT
     sleep 1
     google-chrome {{ chrome-flags }} --hide-scrollbars \
       --force-device-scale-factor=2 --window-size=390,844 \
-      --screenshot="{{ justfile_directory() }}/{{ file }}" http://localhost:8137/
+      --screenshot="{{ justfile_directory() }}/{{ file }}" http://localhost:{{ serve-port }}/
     echo "wrote {{ file }}"
 
 [group('site')]
@@ -108,10 +113,10 @@ shot file="shot.png":
 dump:
     #!/usr/bin/env bash
     set -euo pipefail
-    python3 -m http.server 8137 --directory site >/dev/null 2>&1 &
+    python3 -m http.server {{ serve-port }} --bind 127.0.0.1 --directory site >/dev/null 2>&1 &
     trap 'kill $!' EXIT
     sleep 1
-    google-chrome {{ chrome-flags }} --dump-dom http://localhost:8137/
+    google-chrome {{ chrome-flags }} --dump-dom http://localhost:{{ serve-port }}/
 
 [group('site')]
 [doc("Rasterize the PWA icons from site/icons/icon.svg (the single source)")]
