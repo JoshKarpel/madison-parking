@@ -57,27 +57,9 @@ export default {
     }
 
     const url = new URL(request.url);
-    try {
-      // Authenticated, mutating maintenance endpoint (its own method check).
-      if (url.pathname === "/admin/rebuild-stats") {
-        return await handleAdminRebuild(request, env);
-      }
-      if (request.method !== "GET") {
-        return json({ error: "method not allowed" }, 405);
-      }
-      switch (url.pathname) {
-        case "/history":
-          return await handleHistory(url, env);
-        case "/history/sync":
-          return await handleSync(url, env);
-        case "/stats":
-          return await handleStats(url, env);
-        default:
-          return await handleSnapshot();
-      }
-    } catch (err) {
-      return json({ error: "internal error", detail: String(err) }, 500);
-    }
+    const response = await route(request, url, env);
+    recordRequest(env, request, url, response);
+    return response;
   },
 
   // Two cron rates share this handler; event.cron says which fired. The
@@ -93,6 +75,66 @@ export default {
     }
   },
 };
+
+async function route(request, url, env) {
+  try {
+    // Authenticated, mutating maintenance endpoint (its own method check).
+    if (url.pathname === "/admin/rebuild-stats") {
+      return await handleAdminRebuild(request, env);
+    }
+    if (request.method !== "GET") {
+      return json({ error: "method not allowed" }, 405);
+    }
+    switch (url.pathname) {
+      case "/history":
+        return await handleHistory(url, env);
+      case "/history/sync":
+        return await handleSync(url, env);
+      case "/stats":
+        return await handleStats(url, env);
+      default:
+        return await handleSnapshot();
+    }
+  } catch (err) {
+    return json({ error: "internal error", detail: String(err) }, 500);
+  }
+}
+
+// --- Usage metrics -----------------------------------------------------------
+
+// Collapse the request path to a small, fixed set of labels so the metric's
+// cardinality stays tiny (a bounded GROUP BY key), and unmapped paths don't
+// blow it up. Mirrors the routing in route().
+function endpointLabel(pathname) {
+  switch (pathname) {
+    case "/history":
+      return "history";
+    case "/history/sync":
+      return "sync";
+    case "/stats":
+      return "stats";
+    case "/admin/rebuild-stats":
+      return "admin";
+    default:
+      return "snapshot";
+  }
+}
+
+// Emit one aggregate data point per request: endpoint, coarse country, and
+// status. Deliberately no per-user identifier (nothing that could single out an
+// individual) and nothing stored on the client, so it stays outside
+// GDPR/ePrivacy personal-data territory. Fire-and-forget (writeDataPoint returns
+// void); guarded so local dev and the test harness, which have no binding, are
+// no-ops.
+function recordRequest(env, request, url, response) {
+  if (!env.usage_analytics) return;
+  const endpoint = endpointLabel(url.pathname);
+  env.usage_analytics.writeDataPoint({
+    blobs: [endpoint, request.cf?.country ?? "XX", String(response.status)],
+    doubles: [1],
+    indexes: [endpoint],
+  });
+}
 
 // --- Current snapshot (unchanged behavior) -----------------------------------
 
@@ -582,4 +624,5 @@ export {
   cronAction,
   retentionCutoffSec,
   safeEqual,
+  endpointLabel,
 };

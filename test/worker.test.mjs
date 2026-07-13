@@ -9,6 +9,7 @@ import {
   cronAction,
   retentionCutoffSec,
   safeEqual,
+  endpointLabel,
 } from "../worker/src/index.js";
 
 const FIVE_YEARS_SECONDS = 5 * 365 * 86400;
@@ -189,4 +190,18 @@ test("safeEqual rejects a length mismatch", () => {
 test("safeEqual rejects non-strings (missing or malformed header)", () => {
   ok(!safeEqual(null, "expected-token"));
   ok(!safeEqual(undefined, "expected-token"));
+});
+
+// --- usage metric labels -----------------------------------------------------
+
+test("endpointLabel maps each route to a stable, bounded label", () => {
+  eq(endpointLabel("/history"), "history");
+  eq(endpointLabel("/history/sync"), "sync");
+  eq(endpointLabel("/stats"), "stats");
+  eq(endpointLabel("/admin/rebuild-stats"), "admin");
+});
+
+test("endpointLabel collapses the snapshot path and any unknown path to snapshot", () => {
+  eq(endpointLabel("/"), "snapshot");
+  eq(endpointLabel("/anything-else"), "snapshot");
 });

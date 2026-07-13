@@ -11,7 +11,10 @@ parking garages, for two users on Android. Three pieces, deployed together:
   GitHub Pages as raw static files.
 - **`worker/`** — a Cloudflare Worker that proxies the city's JSON feed (adds
   CORS, edge-caches 60s, returns 502 on upstream failure) and, on cron triggers,
-  records history into a D1 database and serves it back (see History below).
+  records history into a D1 database and serves it back (see History below). It
+  also emits one aggregate Analytics Engine data point per request (endpoint +
+  coarse country + status, no per-user identifier) for a rough usage signal; see
+  `worker/README.md`.
 - **`.github/workflows/deploy.yml`** — one workflow: a `test` job (plain `node`)
   gates `deploy-site` (Pages) and `deploy-worker` (`wrangler deploy`), all on
   push to `main`.

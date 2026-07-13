@@ -70,6 +70,46 @@ fabricated timestamp), keeping collection idempotent.
   `just worker-rotate-token` recipe to set the secret and `just
   worker-rebuild-stats` to invoke it.
 
+## Usage metrics
+
+To get a rough sense of how much the app is used without tracking anyone, the
+Worker writes one [Analytics Engine](https://developers.cloudflare.com/analytics/analytics-engine/)
+data point per request (`recordRequest`, `wrangler.toml` binding
+`usage_analytics`, dataset `madison_parking_usage`). Each point carries only:
+
+- `blob1` — the endpoint label (`snapshot`, `history`, `sync`, `stats`, `admin`),
+  collapsed from the path so cardinality stays tiny.
+- `blob2` — the coarse request country (`request.cf.country`, or `XX` when
+  absent).
+- `blob3` — the response status code.
+
+There is deliberately **no per-user identifier** and nothing is stored on the
+client, so this stays outside GDPR/ePrivacy personal-data territory: it counts
+events, never people. The write is fire-and-forget and guarded, so local dev and
+the test harness (which have no binding) are no-ops. The dataset is created on
+first write; the built-in Workers Analytics dashboard is unaffected and still
+shows raw invocation counts.
+
+Query it over the [SQL API](https://developers.cloudflare.com/analytics/analytics-engine/sql-api/)
+with an API token that has **Account Analytics → Read** (retention is 90 days):
+
+```sh
+curl -s "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/analytics_engine/sql" \
+  -H "Authorization: Bearer $CF_ANALYTICS_TOKEN" \
+  --data "SELECT blob1 AS endpoint, blob2 AS country,
+                 SUM(_sample_interval) AS requests
+            FROM madison_parking_usage
+           WHERE timestamp >= NOW() - INTERVAL '7' DAY
+           GROUP BY endpoint, country
+           ORDER BY requests DESC"
+```
+
+Use `SUM(_sample_interval)` rather than `COUNT(*)`: at this app's request volume
+no sampling happens (the two are equal), but the sum is the sampling-correct form
+if volume ever climbs. Since the client polls while a tab is visible, request
+volume tracks *open-tab time* more than distinct visits; read it as a usage
+signal, not a head-count.
+
 ## Fullness estimate and slot baselines
 
 The weekly rebuild produces two things, computed off the request path so `/stats`

@@ -28,3 +28,11 @@ binding = "madison_parking"
 database_name = "madison-parking"
 database_id = "d16caeb1-3bba-4876-8ef6-ecb1a7036d98"
 migrations_dir = "migrations"
+
+# Aggregate usage metrics (Analytics Engine). One data point per request records
+# endpoint + coarse country + status — no per-user identifier and nothing stored
+# on the client, so it stays outside GDPR/ePrivacy personal-data territory. The
+# dataset is created on first write; query it via the SQL API (see worker/README.md).
+[[analytics_engine_datasets]]
+binding = "usage_analytics"
+dataset = "madison_parking_usage"
