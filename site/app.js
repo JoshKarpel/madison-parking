@@ -798,9 +798,9 @@ function phonePlatform() {
 }
 
 const INSTALL_HINT_TEXT = {
-  ios: "📲 Tip: install this as an app for full-screen, one-tap access — tap the Share button (📤), then “Add to Home Screen”.",
+  ios: "📲 Tip: install this as an app for full-screen, one-tap access: tap the Share button (📤), then “Add to Home Screen”.",
   android:
-    "📲 Tip: install this as an app for full-screen, one-tap access — open your browser menu and choose “Install app” (or “Add to Home screen”).",
+    "📲 Tip: install this as an app for full-screen, one-tap access: open your browser menu and choose “Install app” (or “Add to Home screen”).",
 };
 
 const platform = phonePlatform();
