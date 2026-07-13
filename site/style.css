@@ -437,13 +437,6 @@ footer a {
 /* Shown only on a phone browser that isn't already the installed PWA. */
 .install-hint {
   margin: 0.75rem 0 0;
-  padding: 0.6rem 0.8rem;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--blue);
-  border-radius: 0.5rem;
-  text-align: left;
 }
 
 .stats-status {
