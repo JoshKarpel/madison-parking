@@ -299,7 +299,6 @@
 /* The raised bevel: light top-left edges, dark bottom-right edges, stacked at
    1px and 2px offsets. Applied to the "window" cards and to buttons/controls. */
 :root[data-theme="windows"] .card,
-:root[data-theme="windows"] .pref-select,
 :root[data-theme="windows"] .scheme-btn,
 :root[data-theme="windows"] .reset-data,
 :root[data-theme="windows"] .graph-range {
@@ -855,14 +854,69 @@ footer a {
   color: #fff;
 }
 
-.pref-select {
-  font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: var(--border-width) var(--border-style) var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.25rem 0.4rem;
+/* Theme is a segmented control like Appearance, except each button is a live
+   preview: it hardcodes its own theme's font, colors, and border so it looks the
+   way the page will, whatever theme is currently active. The active button gets a
+   uniform accent ring on top of its preview styling. */
+.theme-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  justify-content: center;
+}
+
+.theme-btn {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
   cursor: pointer;
+}
+
+.theme-btn.active {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  font-weight: 700;
+}
+
+.theme-btn[data-theme="default"] {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #0f172a;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.6rem;
+}
+
+.theme-btn[data-theme="terminal"] {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  color: #1a1a12;
+  background: #fbf9f0;
+  border: 2px solid #cfc8b0;
+  border-radius: 0;
+}
+
+.theme-btn[data-theme="geocities"] {
+  font-family: "Comic Sans MS", "Comic Neue", cursive;
+  color: #000080;
+  background: #ffffff;
+  border: 4px ridge #ff0099;
+  border-radius: 0;
+}
+
+.theme-btn[data-theme="windows"] {
+  font-family: "Tahoma", "MS Sans Serif", "Segoe UI", Verdana, sans-serif;
+  color: #000000;
+  background: #c0c0c0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px #808080,
+    inset 2px 2px #dfdfdf;
+}
+
+.theme-btn[data-theme="collegiate"] {
+  font-family: "Red Hat Text", system-ui, sans-serif;
+  color: #c5050c;
+  background: #ffffff;
+  border: 1px solid #dcdcdf;
+  border-radius: 0.2rem;
 }
 
 /* Shown only on a phone browser that isn't already the installed PWA. */
@@ -932,10 +986,6 @@ footer a {
   width: 100%;
   padding: 0.6rem 1rem 0.7rem;
   border-top: 1px solid var(--border);
-}
-
-.card.expanded {
-  cursor: pointer;
 }
 
 .graph-ranges {
@@ -1024,6 +1074,77 @@ footer a {
   fill: var(--muted);
   font-size: 11px;
   text-anchor: middle;
+}
+
+/* The forecast past "now": the baseline (day, hour) median, dashed to read as a
+   prediction, with its typical p25–p75 range shaded behind it. */
+.chart-predicted-band {
+  fill: var(--muted);
+  opacity: 0.16;
+}
+
+.chart-predicted-line {
+  stroke: var(--blue);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+.chart-predicted-dot {
+  fill: var(--blue);
+  opacity: 0.85;
+}
+
+/* The divider between recorded past and forecast future. */
+.chart-now {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  opacity: 0.45;
+}
+
+.chart-now-label {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+/* Pan/zoom/crosshair capture surface over the plot. touch-action:none claims all
+   touch gestures (drag to pan, pinch to zoom) so the page doesn't scroll or zoom
+   underneath them. */
+.chart-surface {
+  fill: transparent;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.chart-crosshair {
+  pointer-events: none;
+}
+
+.chart-crosshair-line {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.chart-crosshair-dot {
+  fill: var(--blue);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+
+.chart-crosshair-box {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1;
+  opacity: 0.95;
+}
+
+.chart-crosshair-label {
+  fill: var(--text);
+  font-size: 11px;
 }
 
 .graph-status {

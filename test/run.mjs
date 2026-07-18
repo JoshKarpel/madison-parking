@@ -4,6 +4,7 @@ import "./coloring.test.mjs";
 import "./history.test.mjs";
 import "./sw.test.mjs";
 import "./theme.test.mjs";
+import "./chart.test.mjs";
 import { run } from "./harness.mjs";
 
 await run();

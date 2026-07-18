@@ -98,7 +98,7 @@ A chart-toggle emoji button in the card's bottom-right corner toggles its
 view
 (`site/graph.js`, `createGraphView`) is a factory that mounts a single reusable
 element the app re-appends into the expanded card on each re-render, so the
-selected range and loaded chart survive a background refresh. A short-term
+current pan/zoom window and loaded chart survive a background refresh. A short-term
 **trend indicator** per card (filling / emptying / holding steady) comes from
 `computeTrend` over the last `TREND_WINDOW_SECONDS` of locally-synced samples,
 with a *relative* threshold (a fraction of the start/end average, so it scales
@@ -108,8 +108,10 @@ and recomputes trends off the live-snapshot path.
 ## Theming
 
 The look is fully CSS-variable driven, so a theme is a values swap. Two
-independent preferences, each a `<html>` attribute the stylesheet keys off: theme
-is a footer `<select>`, appearance a footer three-button segmented control:
+independent preferences, each a `<html>` attribute the stylesheet keys off, and
+each a footer segmented button control: theme (five buttons, each a **live
+preview** styled in its own theme's font/colors/border), appearance (three
+buttons):
 
 - **theme** (`data-theme`): `default` (rounded, sans-serif), `terminal`
   (monospace CRT: self-hosted JetBrains Mono, square 2px borders,
@@ -138,12 +140,12 @@ the single source of truth: valid ids (`THEMES`, `COLOR_SCHEMES`), the
 `normalize*` guards, and `applyTheme`/`applyColorScheme` (toggle the attribute,
 resolve the scheme, repoint the `theme-color` meta). The head of `index.html`
 has a tiny inline script that applies both stored choices *before first paint*
-to avoid a flash; `app.js` owns the theme selector and appearance buttons,
+to avoid a flash; `app.js` owns the theme and appearance button groups,
 persistence (`parking:theme`, `parking:color-scheme`), and re-resolving on a
 system light/dark change. A new
-theme = a `THEMES` entry, a `THEME_COLORS` entry, a light + a dark CSS block, and
-an `<option>` (plus a font in `site/fonts/` + `@font-face` + the `sw.js` SHELL if
-it needs one).
+theme = a `THEMES` entry, a `THEME_COLORS` entry, a light + a dark CSS block, a
+`.theme-btn[data-theme="…"]` preview block, and a `<button>` (plus a font in
+`site/fonts/` + `@font-face` + the `sw.js` SHELL if it needs one).
 
 **Specificity invariant:** the default-dark block `:root[data-scheme="dark"]`
 (0,2,0) and a theme's light block `:root[data-theme="X"]` (0,2,0) both match when
@@ -195,12 +197,36 @@ fullness coloring, and the slot-comparison tidbit. Full detail in
   window on a cold start, and prunes past one year. Everything degrades: if
   IndexedDB is unavailable or a fetch fails, callers fall back to the Worker and
   the live view still renders.
-- **Graphs** (`site/chart.js`): hand-rolled SVG, one line plus a shaded band
-  (min/max, or the "typical" p25–p75 overlay from the baseline cells), day/week/
-  month/year toggle picking raw/hour/day buckets. The y-axis fits the data's own
-  range (padded, floored at 0), not anchored at 0, so a garage sitting far from
-  empty still fills the plot. Reads IndexedDB first for the covered window, hits
-  the Worker for the rest.
+- **Graphs** (`site/chart.js` renders, `site/graph.js` drives): hand-rolled SVG
+  over a **free time window** the user pans and zooms, not a fixed range.
+  `renderChart(spec)` draws an explicit `domain: {t0, t1}` (so it can show empty
+  space or the future), takes `actual` + `predicted` series plus the "typical"
+  p25–p75 baseline overlay, marks `nowTs` with a divider, clips the data layers
+  to the plot, and returns a controller (`svg`, `content`, `plot`, `tsAtClientX`,
+  `crosshairAtClientX`, `hideCrosshair`) that `graph.js` drives. The y-axis fits
+  the data's own range (padded, floored at 0), not anchored at 0, so a garage
+  sitting far from empty still fills the plot. Reads IndexedDB first for the
+  covered window, hits the Worker for the rest.
+  - **Pan/zoom** (`graph.js`, `wireGestures`): drag to pan through time, wheel or
+    two-finger pinch to zoom; the bucket (raw/hour/day) and label format follow
+    the visible span (`scaleForSpan`). During a gesture the drawn `content` is
+    transformed (translate+scale) for instant feedback and the data reloads once
+    it settles, so the SVG isn't rebuilt mid-gesture (which would drop pointer
+    state). A span of headroom is loaded on each side so a pan reveals loaded
+    data before it reloads.
+  - **Presets** are "last N" windows (`6h`/`Day`/`Week`/`Month`), each showing
+    `past` back from now plus a small forecast peek ahead; a zoom clears the
+    active preset.
+  - **Forecast** (`predictSeries`): where the window reaches past `now`, the
+    baseline supplies the *typical* count for each future `(day, hour)` — the p50
+    median as a dashed line with its p25–p75 band, one point per hour (thinned on
+    a wide window), gaps where a cell lacks support. It's labeled "typical", not
+    a claim about the specific future.
+  - **Crosshair**: a transparent capture surface over the plot; a tap or hover
+    snaps to the nearest actual-or-forecast sample and floats a readout of its
+    time (`pointFormat`) and count (future points tagged "(typical)"). A mouse
+    hover clears on leave and on pan start; a touch readout persists until the
+    next tap.
 
 ## Service worker updates (important)
 

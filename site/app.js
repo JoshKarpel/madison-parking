@@ -104,7 +104,7 @@ const els = {
   buildStamp: document.getElementById("build-stamp"),
   cacheSize: document.getElementById("cache-size"),
   resetData: document.getElementById("reset-data"),
-  themeSelect: document.getElementById("theme-select"),
+  themeButtons: [...document.querySelectorAll("#theme-buttons .theme-btn")],
   schemeButtons: [...document.querySelectorAll("#scheme-buttons .scheme-btn")],
 };
 
@@ -831,15 +831,28 @@ function persist(key, value) {
   }
 }
 
-const storedTheme = normalizeTheme(localStorage.getItem(STORAGE_KEYS.theme));
-els.themeSelect.value = storedTheme;
-applyTheme(storedTheme);
+// Theme is a segmented control whose buttons each preview their own theme's look.
+// The pressed button is the current choice; aria-pressed carries it for AT.
+let themePref = normalizeTheme(localStorage.getItem(STORAGE_KEYS.theme));
+applyTheme(themePref);
 
-els.themeSelect.addEventListener("change", () => {
-  const theme = normalizeTheme(els.themeSelect.value);
-  persist(STORAGE_KEYS.theme, theme);
-  applyTheme(theme);
-});
+function syncThemeButtons() {
+  for (const btn of els.themeButtons) {
+    const active = btn.dataset.theme === themePref;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+}
+syncThemeButtons();
+
+for (const btn of els.themeButtons) {
+  btn.addEventListener("click", () => {
+    themePref = normalizeTheme(btn.dataset.theme);
+    persist(STORAGE_KEYS.theme, themePref);
+    applyTheme(themePref);
+    syncThemeButtons();
+  });
+}
 
 // Appearance is a three-button segmented control (System / Light / Dark). The
 // pressed button is the current preference; aria-pressed carries it for AT.

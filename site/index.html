@@ -64,19 +64,27 @@
           rel="noopener"
           >City of Madison</a
         >. Tap the chart icon (📈/📉/〰️) for a garage's trends (tap again to
-        close), 🗺️ for its map. Use ▲▼ to reorder, − to minimize a garage you
-        don't need (tap its ＋ to restore). Pull down to refresh.
+        close); drag the graph to pan through time, pinch or scroll to zoom, and
+        tap a point for its exact count. Past the “now” line the dashed line is
+        the typical count for that day and time. 🗺️ opens its map. Use ▲▼ to
+        reorder, − to minimize a garage you don't need (tap its ＋ to restore).
+        Pull down to refresh.
       </p>
       <p id="stats-status" class="stats-status"></p>
       <p class="pref-row">
-        <label for="theme-select">Theme</label>
-        <select id="theme-select" class="pref-select">
-          <option value="default">Default</option>
-          <option value="terminal">Terminal</option>
-          <option value="geocities">GeoCities</option>
-          <option value="windows">Windows 98</option>
-          <option value="collegiate">Collegiate</option>
-        </select>
+        <span class="pref-label" id="theme-label">Theme</span>
+        <span
+          id="theme-buttons"
+          class="theme-buttons"
+          role="group"
+          aria-labelledby="theme-label"
+        >
+          <button type="button" class="theme-btn" data-theme="default">Default</button>
+          <button type="button" class="theme-btn" data-theme="terminal">Terminal</button>
+          <button type="button" class="theme-btn" data-theme="geocities">GeoCities</button>
+          <button type="button" class="theme-btn" data-theme="windows">Windows 98</button>
+          <button type="button" class="theme-btn" data-theme="collegiate">Collegiate</button>
+        </span>
       </p>
       <p class="pref-row">
         <span class="pref-label" id="scheme-label">Appearance</span>
