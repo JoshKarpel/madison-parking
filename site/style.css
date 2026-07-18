@@ -874,6 +874,20 @@ footer a {
   margin: 0.75rem 0 0;
 }
 
+.source-link {
+  margin: 0.75rem 0 0;
+}
+
+.source-link a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.github-mark {
+  vertical-align: middle;
+}
+
 /* Baselines rebuild weekly; a stale one means the Worker's cron has stopped. */
 .stats-status.stale {
   color: var(--red);
