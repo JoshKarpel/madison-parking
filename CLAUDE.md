@@ -108,22 +108,27 @@ and recomputes trends off the live-snapshot path.
 ## Theming
 
 The look is fully CSS-variable driven, so a theme is a values swap. Two
-independent preferences, each a `<html>` attribute the stylesheet keys off and
-each a footer `<select>`:
+independent preferences, each a `<html>` attribute the stylesheet keys off: theme
+is a footer `<select>`, appearance a footer three-button segmented control:
 
 - **theme** (`data-theme`): `default` (rounded, sans-serif), `terminal`
   (monospace CRT: self-hosted JetBrains Mono, square 2px borders,
   green/amber/grey-white phosphor), `geocities` (a 1996-homepage parody: Comic
   Sans, ridge borders, neon clash, tiled background, rainbow header, blink,
-  haloed pixel budgie + cockatiel), or `windows` (Windows 98: Tahoma, silver
+  haloed pixel budgie + cockatiel), `windows` (Windows 98: Tahoma, silver
   panels on a teal
-  desktop, a box-shadow bevel adapted from 98.css; dark = High Contrast Black).
+  desktop, a box-shadow bevel adapted from 98.css; dark = High Contrast Black),
+  or `collegiate` (clean red-and-white: cardinal `#c5050c` accent, near-sharp
+  corners, self-hosted Red Hat Display headings + Red Hat Text body, both Red
+  Hat's SIL OFL faces; deliberately uses only the free color and fonts, no
+  protected mark, logo, crest, or mascot).
   **"default" is the attribute's absence**, so CSS only ever names non-default
   themes.
 - **appearance** (`data-scheme`): light/dark, defaulting to the system
-  preference or forced. It is **always resolved to `light`/`dark` by JS** (never
-  left to a `prefers-color-scheme` query), so a forced choice can override the
-  OS and the stylesheet needs no media query.
+  preference or forced. The `System`/`Light`/`Dark` buttons set the preference
+  (the pressed one carries it via `aria-pressed`); it is **always resolved to
+  `light`/`dark` by JS** (never left to a `prefers-color-scheme` query), so a
+  forced choice can override the OS and the stylesheet needs no media query.
 
 `site/style.css` defines the light palette + structural knobs (`--font-family`,
 `--border-width`, `--border-style`, `--radius*`) in `:root`, the dark palette in
@@ -133,8 +138,9 @@ the single source of truth: valid ids (`THEMES`, `COLOR_SCHEMES`), the
 `normalize*` guards, and `applyTheme`/`applyColorScheme` (toggle the attribute,
 resolve the scheme, repoint the `theme-color` meta). The head of `index.html`
 has a tiny inline script that applies both stored choices *before first paint*
-to avoid a flash; `app.js` owns the selectors, persistence (`parking:theme`,
-`parking:color-scheme`), and re-resolving on a system light/dark change. A new
+to avoid a flash; `app.js` owns the theme selector and appearance buttons,
+persistence (`parking:theme`, `parking:color-scheme`), and re-resolving on a
+system light/dark change. A new
 theme = a `THEMES` entry, a `THEME_COLORS` entry, a light + a dark CSS block, and
 an `<option>` (plus a font in `site/fonts/` + `@font-face` + the `sw.js` SHELL if
 it needs one).

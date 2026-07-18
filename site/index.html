@@ -75,15 +75,21 @@
           <option value="terminal">Terminal</option>
           <option value="geocities">GeoCities</option>
           <option value="windows">Windows 98</option>
+          <option value="collegiate">Collegiate</option>
         </select>
       </p>
       <p class="pref-row">
-        <label for="scheme-select">Appearance</label>
-        <select id="scheme-select" class="pref-select">
-          <option value="system">System</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
+        <span class="pref-label" id="scheme-label">Appearance</span>
+        <span
+          id="scheme-buttons"
+          class="scheme-buttons"
+          role="group"
+          aria-labelledby="scheme-label"
+        >
+          <button type="button" class="scheme-btn" data-scheme="system">System</button>
+          <button type="button" class="scheme-btn" data-scheme="light">Light</button>
+          <button type="button" class="scheme-btn" data-scheme="dark">Dark</button>
+        </span>
       </p>
       <p id="install-hint" class="install-hint" hidden></p>
       <details class="debug">

@@ -25,6 +25,26 @@
   font-display: swap;
 }
 
+/* Red Hat Display (headings) + Red Hat Text (body): Red Hat's SIL OFL typefaces,
+   self-hosted for the Collegiate theme. Variable fonts, so one file each spans
+   the weight range. The fonts are Red Hat's, not any university's; see
+   fonts/RedHat-OFL.txt. */
+@font-face {
+  font-family: "Red Hat Display";
+  src: url("./fonts/RedHatDisplay.woff2") format("woff2");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Red Hat Text";
+  src: url("./fonts/RedHatText.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #f8fafc;
   --surface: #ffffff;
@@ -280,6 +300,7 @@
    1px and 2px offsets. Applied to the "window" cards and to buttons/controls. */
 :root[data-theme="windows"] .card,
 :root[data-theme="windows"] .pref-select,
+:root[data-theme="windows"] .scheme-btn,
 :root[data-theme="windows"] .reset-data,
 :root[data-theme="windows"] .graph-range {
   box-shadow: inset -1px -1px var(--bevel-dark), inset 1px 1px var(--bevel-light),
@@ -288,9 +309,108 @@
 
 /* The sunken (pressed) bevel: the same colors, swapped, for the active range. */
 :root[data-theme="windows"] .graph-range.active,
+:root[data-theme="windows"] .scheme-btn.active,
 :root[data-theme="windows"] .reset-data:active {
   box-shadow: inset -1px -1px var(--bevel-light), inset 1px 1px var(--bevel-dark),
     inset -2px -2px var(--bevel-face), inset 2px 2px var(--bevel-shadow);
+}
+
+/* --- Collegiate theme ------------------------------------------------------ */
+/* A clean red-and-white collegiate look modeled on modern university web design:
+   white surfaces, a cardinal-red accent (#C5050C), near-sharp corners, and the
+   Red Hat type family (Red Hat Display for headings, Red Hat Text for body). Both
+   the color and the fonts are free to use — the color is a bare hue, the fonts
+   are Red Hat's own SIL OFL faces — so nothing here reproduces a protected mark,
+   logo, crest, mascot, or photo. The functional fullness bands keep distinct
+   green/amber/blue hues; only red is tuned to the cardinal accent. Light follows
+   the system light/dark like the other themes. */
+:root[data-theme="collegiate"] {
+  --font-family: "Red Hat Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius: 0.25rem;
+  --radius-sm: 0.2rem;
+
+  --bg: #f4f4f5;
+  --surface: #ffffff;
+  --text: #202020;
+  --muted: #5f6062;
+  --border: #dcdcdf;
+  --green: #2e7d32;
+  --green-bg: #e6f2e6;
+  --amber: #b26a00;
+  --amber-bg: #f7ead0;
+  --red: #c5050c;
+  --red-bg: #f7dcdd;
+  --blue: #2a4a7f;
+  --star: #c5050c;
+
+  /* The filled masthead band; matches the browser chrome color. A fixed deep
+     cardinal (not the lighter --red) so white title/meta text stays legible. */
+  --masthead: #c5050c;
+}
+
+:root[data-theme="collegiate"][data-scheme="dark"] {
+  --bg: #17181a;
+  --surface: #212226;
+  --text: #ececed;
+  --muted: #a6a7ab;
+  --border: #34363b;
+  --green: #5bbf62;
+  --green-bg: #16321a;
+  --amber: #e0a53a;
+  --amber-bg: #3a2a0d;
+  --red: #f4535a;
+  --red-bg: #3a1113;
+  --blue: #7fa8e0;
+  --star: #f4535a;
+
+  --masthead: #7a0306;
+}
+
+/* A solid cardinal masthead with a white Red Hat Display title — the university
+   -homepage banner look. On the red band the status text goes white (the words
+   "Live"/"Stale", not colour, carry the state here); cardinal accents then run
+   through the page on garage names and section labels. */
+:root[data-theme="collegiate"] header {
+  background: var(--masthead);
+  color: #fff;
+}
+
+:root[data-theme="collegiate"] h1,
+:root[data-theme="collegiate"] h2 {
+  font-family: "Red Hat Display", system-ui, sans-serif;
+}
+
+:root[data-theme="collegiate"] h1 {
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+:root[data-theme="collegiate"] header .meta,
+:root[data-theme="collegiate"] header .modified-ago,
+:root[data-theme="collegiate"] header .refresh-label {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+:root[data-theme="collegiate"] .status-row .status {
+  color: #fff;
+}
+
+:root[data-theme="collegiate"] .refresh-progress {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+:root[data-theme="collegiate"] #refresh-progress-bar {
+  background: #fff;
+}
+
+/* Cardinal garage names and section labels carry the accent past the masthead. */
+:root[data-theme="collegiate"] .card .name {
+  color: var(--red);
+}
+
+:root[data-theme="collegiate"] h2 {
+  color: var(--red);
 }
 
 * {
@@ -703,10 +823,36 @@ footer a {
   gap: 0.4rem;
 }
 
-.pref-row label {
+.pref-row label,
+.pref-row .pref-label {
   color: var(--muted);
   min-width: 5.5rem;
   text-align: right;
+}
+
+/* Appearance is a segmented three-button control (System / Light / Dark); the
+   pressed button carries the current choice. Same palette variables as the other
+   controls, so every theme restyles it for free. */
+.scheme-buttons {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.scheme-btn {
+  padding: 0.25rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--surface);
+  border: var(--border-width) var(--border-style) var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.scheme-btn.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
 }
 
 .pref-select {

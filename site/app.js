@@ -105,7 +105,7 @@ const els = {
   cacheSize: document.getElementById("cache-size"),
   resetData: document.getElementById("reset-data"),
   themeSelect: document.getElementById("theme-select"),
-  schemeSelect: document.getElementById("scheme-select"),
+  schemeButtons: [...document.querySelectorAll("#scheme-buttons .scheme-btn")],
 };
 
 function loadCachedData() {
@@ -841,23 +841,34 @@ els.themeSelect.addEventListener("change", () => {
   applyTheme(theme);
 });
 
-const storedScheme = normalizeColorScheme(localStorage.getItem(STORAGE_KEYS.colorScheme));
-els.schemeSelect.value = storedScheme;
-applyColorScheme(storedScheme);
+// Appearance is a three-button segmented control (System / Light / Dark). The
+// pressed button is the current preference; aria-pressed carries it for AT.
+let schemePref = normalizeColorScheme(localStorage.getItem(STORAGE_KEYS.colorScheme));
+applyColorScheme(schemePref);
 
-els.schemeSelect.addEventListener("change", () => {
-  const scheme = normalizeColorScheme(els.schemeSelect.value);
-  persist(STORAGE_KEYS.colorScheme, scheme);
-  applyColorScheme(scheme);
-});
+function syncSchemeButtons() {
+  for (const btn of els.schemeButtons) {
+    const active = btn.dataset.scheme === schemePref;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+}
+syncSchemeButtons();
+
+for (const btn of els.schemeButtons) {
+  btn.addEventListener("click", () => {
+    schemePref = normalizeColorScheme(btn.dataset.scheme);
+    persist(STORAGE_KEYS.colorScheme, schemePref);
+    applyColorScheme(schemePref);
+    syncSchemeButtons();
+  });
+}
 
 // A system light/dark change only moves the needle while the preference is
 // "system"; applyColorScheme re-resolves it (and is a no-op for a forced choice).
 window
   .matchMedia?.("(prefers-color-scheme: dark)")
-  .addEventListener("change", () =>
-    applyColorScheme(normalizeColorScheme(els.schemeSelect.value))
-  );
+  .addEventListener("change", () => applyColorScheme(schemePref));
 
 // --- Debug menu --------------------------------------------------------------
 // The build stamp identifies which deploy this client is actually running, so a
