@@ -109,7 +109,7 @@ and recomputes trends off the live-snapshot path.
 
 The look is fully CSS-variable driven, so a theme is a values swap. Two
 independent preferences, each a `<html>` attribute the stylesheet keys off, and
-each a footer segmented button control: theme (five buttons, each a **live
+each a footer segmented button control: theme (six buttons, each a **live
 preview** styled in its own theme's font/colors/border), appearance (three
 buttons):
 
@@ -123,7 +123,22 @@ buttons):
   or `collegiate` (clean red-and-white: cardinal `#c5050c` accent, near-sharp
   corners, self-hosted Red Hat Display headings + Red Hat Text body, both Red
   Hat's SIL OFL faces; deliberately uses only the free color and fonts, no
-  protected mark, logo, crest, or mascot).
+  protected mark, logo, crest, or mascot), or `sky` (translucent "glass" panels
+  over a **live photo of the sky above downtown Madison**: `site/sky.js` mounts a
+  fixed crossfading background driven by a single background timer that reloads a
+  fresh cache-busted frame each tick, from the UW-Madison AOSS building's rooftop
+  cameras. A sky-only footer control row (shown only under this theme) picks the
+  view: a fixed compass camera (E/S/W/NW/N), `loop` (cycle all five in order), or
+  `shuffle` (cycle at random), persisted as `parking:sky-view`. The button for the
+  camera currently on screen gets a green glowing rim (an `onView` callback from
+  `sky.js` toggling `.current`), so the live view is obvious even mid-rotation. A
+  **Full-sky peek**
+  button hides the app chrome to show the whole photo, keeping the view picker and
+  a Show-app exit floated at the top (the `sky-peek` body class); leaving the theme
+  clears it. The theme's sky gradient is the offline/failed-frame fallback. The
+  imagery is the only external network dependency the client has beyond the Worker;
+  AOSS asks for attribution, carried by the `.sky-credit` footer line shown only
+  under this theme).
   **"default" is the attribute's absence**, so CSS only ever names non-default
   themes.
 - **appearance** (`data-scheme`): light/dark, defaulting to the system
@@ -145,7 +160,8 @@ persistence (`parking:theme`, `parking:color-scheme`), and re-resolving on a
 system light/dark change. A new
 theme = a `THEMES` entry, a `THEME_COLORS` entry, a light + a dark CSS block, a
 `.theme-btn[data-theme="…"]` preview block, and a `<button>` (plus a font in
-`site/fonts/` + `@font-face` + the `sw.js` SHELL if it needs one).
+`site/fonts/` + `@font-face` + the `sw.js` SHELL if it needs one, or a JS module
+in the SHELL and wired through `app.js`'s theme handler, as `sky` does).
 
 **Specificity invariant:** the default-dark block `:root[data-scheme="dark"]`
 (0,2,0) and a theme's light block `:root[data-theme="X"]` (0,2,0) both match when

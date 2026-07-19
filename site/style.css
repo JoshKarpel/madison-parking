@@ -412,6 +412,108 @@
   color: var(--red);
 }
 
+/* --- Sky theme ------------------------------------------------------------- */
+/* The background is a live photo of the sky over downtown Madison, rotated through
+   the UW-Madison AOSS building's five rooftop cameras (site/sky.js mounts .sky-bg
+   and drives the crossfade). Surfaces turn to translucent, blurred "glass" so the
+   sky reads behind the cards; --bg is a solid sky tone and the body carries a sky
+   gradient, which is what shows when a frame fails to load or the app is offline.
+   Because the photo is the real current sky, the theme is genuinely bright by day
+   and dark at night whatever the appearance toggle says; light/dark here only
+   tunes the glass and text contrast. */
+:root[data-theme="sky"] {
+  --radius: 0.9rem;
+  --radius-sm: 0.5rem;
+
+  --bg: #dceffb;
+  --surface: rgba(255, 255, 255, 0.72);
+  --text: #10243a;
+  --muted: #47607a;
+  --border: rgba(255, 255, 255, 0.65);
+  --green: #1c8a4a;
+  --green-bg: #d6f0df;
+  --amber: #b9700a;
+  --amber-bg: #f6e6c8;
+  --red: #cc2b2b;
+  --red-bg: #f6d8d8;
+  --blue: #2563c8;
+  --star: #eab308;
+}
+
+:root[data-theme="sky"][data-scheme="dark"] {
+  --bg: #0a2036;
+  --surface: rgba(14, 26, 40, 0.6);
+  --text: #eaf3fb;
+  --muted: #9fb6cc;
+  --border: rgba(255, 255, 255, 0.2);
+  --green: #4ade80;
+  --green-bg: #123726;
+  --amber: #fbbf24;
+  --amber-bg: #3a2a0a;
+  --red: #f87171;
+  --red-bg: #3a1414;
+  --blue: #7fb0ff;
+  --star: #fbbf24;
+}
+
+/* The sky gradient that fills the viewport behind the rotating photo: seen on its
+   own until the first frame decodes, and whenever a frame fails or we're offline. */
+:root[data-theme="sky"] body {
+  background: linear-gradient(180deg, #bfe3ff 0%, #dceffb 55%, #eaf7ff 100%);
+}
+
+:root[data-theme="sky"][data-scheme="dark"] body {
+  background: linear-gradient(180deg, #05121f 0%, #0a2036 60%, #123048 100%);
+}
+
+/* The rotating rooftop photo: a fixed full-viewport pair of crossfading layers,
+   sitting above the body gradient but behind all content. site/sky.js swaps the
+   image and toggles .visible; the opacity transition is the crossfade. */
+.sky-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sky-layer {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  opacity: 0;
+  transition: opacity 1.2s ease-in-out;
+}
+
+.sky-layer.visible {
+  opacity: 1;
+}
+
+/* Glass panels so header, cards, and footer stay legible over the photo. The
+   translucent --surface lets the sky through; the blur keeps text readable. */
+:root[data-theme="sky"] header,
+:root[data-theme="sky"] footer {
+  background: var(--surface);
+  border-radius: var(--radius);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+:root[data-theme="sky"] header {
+  margin-top: 0.5rem;
+}
+
+:root[data-theme="sky"] footer {
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+:root[data-theme="sky"] .card {
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -919,6 +1021,14 @@ footer a {
   border-radius: 0.2rem;
 }
 
+.theme-btn[data-theme="sky"] {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #10243a;
+  background: linear-gradient(180deg, #7ec2ff, #dbefff);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 0.9rem;
+}
+
 /* Shown only on a phone browser that isn't already the installed PWA. */
 .install-hint {
   margin: 0.75rem 0 0;
@@ -940,6 +1050,145 @@ footer a {
 
 .github-mark {
   vertical-align: middle;
+}
+
+/* Attribution the AOSS cameras ask for; shown only while the sky theme's rooftop
+   imagery is on screen. */
+.sky-credit {
+  display: none;
+}
+
+:root[data-theme="sky"] .sky-credit {
+  display: block;
+  margin: 0.75rem 0 0;
+}
+
+/* Sky-theme control row: the view picker (E/S/W/NW/N), Loop/Shuffle rotation, and
+   the Full-sky peek. Shown only while the sky theme is active. */
+.sky-controls {
+  display: none;
+}
+
+:root[data-theme="sky"] .sky-controls {
+  display: flex;
+}
+
+.sky-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  justify-content: center;
+}
+
+.sky-btn {
+  padding: 0.25rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+
+.sky-btn.active {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  font-weight: 700;
+}
+
+/* The camera currently on screen gets a green glowing rim, so the live view is
+   obvious even while looping/shuffling. Uses box-shadow (not outline), so it can
+   coexist with the .active mode ring on a fixed-view button. */
+.sky-btn.current {
+  border-color: #3ddc84;
+  box-shadow: 0 0 5px 1px rgba(61, 220, 132, 0.95),
+    0 0 13px 3px rgba(61, 220, 132, 0.5);
+}
+
+/* Full-sky peek: hide the app chrome so only the rotating photo shows, keeping the
+   camera view picker and the imagery credit floated at the top beside the exit
+   button so you can still switch cameras. The .sky-bg layer is a separate body
+   child and stays. */
+#sky-peek-exit {
+  display: none;
+}
+
+body.sky-peek > header,
+body.sky-peek > main,
+body.sky-peek > #refresh-indicator {
+  display: none;
+}
+
+/* The footer stays in the layout but floats to the top as a transparent bar with
+   only its sky rows visible; the exit button's reserved space keeps them clear. */
+body.sky-peek > footer {
+  position: fixed;
+  top: calc(0.75rem + env(safe-area-inset-top));
+  left: 0.5rem;
+  right: 0.5rem;
+  margin: 0;
+  padding: 0 8rem 0 0;
+  background: none;
+  border-radius: 0;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  z-index: 10;
+}
+
+body.sky-peek > footer > * {
+  display: none;
+}
+
+/* The enter-peek trigger is redundant while peeking (the exit button replaces it).
+   The chained .sky-controls.sky-peek-row is needed to out-specify the
+   :root[data-theme="sky"] .sky-controls rule (0,3,0) that would keep it shown. */
+body.sky-peek > footer > .sky-controls.sky-peek-row {
+  display: none;
+}
+
+body.sky-peek > footer > .sky-view-row {
+  display: flex;
+  margin: 0;
+}
+
+/* The "Sky view" label floats over the bare photo here (the buttons keep their own
+   glass), so give it white + a shadow to stay legible over a bright or dark sky. */
+body.sky-peek > footer .pref-label {
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+body.sky-peek > footer > .sky-credit {
+  display: block;
+  margin: 0.4rem 0 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+body.sky-peek > footer > .sky-credit a {
+  color: #fff;
+}
+
+body.sky-peek #sky-peek-exit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  position: fixed;
+  top: calc(0.75rem + env(safe-area-inset-top));
+  right: calc(0.75rem + env(safe-area-inset-right));
+  z-index: 11;
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
 }
 
 /* Baselines rebuild weekly; a stale one means the Worker's cron has stopped. */

@@ -28,6 +28,7 @@ import {
   applyColorScheme,
   normalizeColorScheme,
 } from "./theme.js";
+import { createSkyBackground, normalizeSkyMode } from "./sky.js";
 
 const DEFAULT_API_URL = "https://madison-parking.josh-karpel.workers.dev";
 
@@ -89,6 +90,7 @@ const STORAGE_KEYS = {
   minimized: "parking:minimized",
   theme: "parking:theme",
   colorScheme: "parking:color-scheme",
+  skyMode: "parking:sky-view",
 };
 
 const els = {
@@ -106,6 +108,9 @@ const els = {
   resetData: document.getElementById("reset-data"),
   themeButtons: [...document.querySelectorAll("#theme-buttons .theme-btn")],
   schemeButtons: [...document.querySelectorAll("#scheme-buttons .scheme-btn")],
+  skyButtons: [...document.querySelectorAll("#sky-buttons .sky-btn")],
+  skyPeek: document.getElementById("sky-peek"),
+  skyPeekExit: document.getElementById("sky-peek-exit"),
 };
 
 function loadCachedData() {
@@ -836,6 +841,57 @@ function persist(key, value) {
 let themePref = normalizeTheme(localStorage.getItem(STORAGE_KEYS.theme));
 applyTheme(themePref);
 
+// The sky theme's live rooftop-camera background: a self-contained background
+// timer that only runs while that theme is active. Its view/rotation mode is a
+// segmented control shown only under the sky theme.
+// Glow the button for the camera currently on screen (a green rim), so you can
+// tell which view is live even under loop/shuffle. `view` is null when it stops.
+function markCurrentSkyView(view) {
+  for (const btn of els.skyButtons) {
+    btn.classList.toggle("current", btn.dataset.sky === view);
+  }
+}
+const skyBackground = createSkyBackground(markCurrentSkyView);
+let skyMode = normalizeSkyMode(localStorage.getItem(STORAGE_KEYS.skyMode));
+skyBackground.setMode(skyMode);
+
+function syncSkyBackground() {
+  if (themePref === "sky") {
+    skyBackground.start();
+  } else {
+    skyBackground.stop();
+    // Peek only makes sense over the sky photo; leaving the theme exits it so the
+    // app chrome can't stay hidden under another theme.
+    document.body.classList.remove("sky-peek");
+  }
+}
+syncSkyBackground();
+
+function syncSkyButtons() {
+  for (const btn of els.skyButtons) {
+    const active = btn.dataset.sky === skyMode;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+}
+syncSkyButtons();
+
+for (const btn of els.skyButtons) {
+  btn.addEventListener("click", () => {
+    skyMode = normalizeSkyMode(btn.dataset.sky);
+    persist(STORAGE_KEYS.skyMode, skyMode);
+    skyBackground.setMode(skyMode);
+    syncSkyButtons();
+  });
+}
+
+els.skyPeek.addEventListener("click", () => {
+  document.body.classList.add("sky-peek");
+});
+els.skyPeekExit.addEventListener("click", () => {
+  document.body.classList.remove("sky-peek");
+});
+
 function syncThemeButtons() {
   for (const btn of els.themeButtons) {
     const active = btn.dataset.theme === themePref;
@@ -850,6 +906,7 @@ for (const btn of els.themeButtons) {
     themePref = normalizeTheme(btn.dataset.theme);
     persist(STORAGE_KEYS.theme, themePref);
     applyTheme(themePref);
+    syncSkyBackground();
     syncThemeButtons();
   });
 }

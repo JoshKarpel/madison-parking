@@ -84,7 +84,30 @@
           <button type="button" class="theme-btn" data-theme="geocities">GeoCities</button>
           <button type="button" class="theme-btn" data-theme="windows">Windows 98</button>
           <button type="button" class="theme-btn" data-theme="collegiate">Collegiate</button>
+          <button type="button" class="theme-btn" data-theme="sky">Sky</button>
         </span>
+      </p>
+      <p class="pref-row sky-controls sky-view-row">
+        <span class="pref-label" id="sky-label">Sky view</span>
+        <span
+          id="sky-buttons"
+          class="sky-buttons"
+          role="group"
+          aria-labelledby="sky-label"
+        >
+          <button type="button" class="sky-btn" data-sky="east">E</button>
+          <button type="button" class="sky-btn" data-sky="south">S</button>
+          <button type="button" class="sky-btn" data-sky="west">W</button>
+          <button type="button" class="sky-btn" data-sky="northwest">NW</button>
+          <button type="button" class="sky-btn" data-sky="north">N</button>
+          <button type="button" class="sky-btn" data-sky="loop">🔁 Loop</button>
+          <button type="button" class="sky-btn" data-sky="shuffle">🔀 Shuffle</button>
+        </span>
+      </p>
+      <p class="pref-row sky-controls sky-peek-row">
+        <button id="sky-peek" type="button" class="sky-btn sky-peek-btn">
+          🌄 Full sky
+        </button>
       </p>
       <p class="pref-row">
         <span class="pref-label" id="scheme-label">Appearance</span>
@@ -98,6 +121,15 @@
           <button type="button" class="scheme-btn" data-scheme="light">Light</button>
           <button type="button" class="scheme-btn" data-scheme="dark">Dark</button>
         </span>
+      </p>
+      <p class="sky-credit">
+        Rooftop sky imagery:
+        <a
+          href="https://www.aos.wisc.edu/weather/wx_obs/WebCam.html"
+          target="_blank"
+          rel="noopener"
+          >UW–Madison SSEC/AOS</a
+        >
       </p>
       <p id="install-hint" class="install-hint" hidden></p>
       <p class="source-link">
@@ -127,6 +159,10 @@
         </button>
       </details>
     </footer>
+
+    <button id="sky-peek-exit" type="button" aria-label="Show the app again">
+      🌥️ Show app
+    </button>
 
     <script type="module" src="./app.js"></script>
   </body>
