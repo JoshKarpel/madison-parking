@@ -113,14 +113,12 @@ export function renderChart(spec) {
   for (const p of predicted) values.push(p.avg, p.min, p.max);
   if (baseline) for (const b of baseline) values.push(b.p25, b.p75);
 
-  // Fit the y-axis to the data's own range (padded, rounded to tens for clean
-  // labels) instead of anchoring at 0, so a garage sitting far from empty fills
-  // the plot vertically rather than hugging the top over a band of dead space.
-  // Floored at 0 since vacancy can't go negative.
-  const rawMin = Math.min(...values);
+  // Anchor the y-axis at 0 so proximity to empty (the thing that matters) is
+  // always readable, rather than fitting the axis to the data's own range.
+  // Top padded and rounded to tens for clean labels.
   const rawMax = Math.max(...values);
-  const pad = Math.max(10, rawMax - rawMin) * 0.1;
-  const yMin = Math.max(0, Math.floor((rawMin - pad) / 10) * 10);
+  const pad = Math.max(10, rawMax) * 0.1;
+  const yMin = 0;
   let yMax = Math.ceil((rawMax + pad) / 10) * 10;
   if (yMax - yMin < 10) yMax = yMin + 10;
   const ySpan = yMax - yMin;

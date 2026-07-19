@@ -203,10 +203,10 @@ fullness coloring, and the slot-comparison tidbit. Full detail in
   space or the future), takes `actual` + `predicted` series plus the "typical"
   p25–p75 baseline overlay, marks `nowTs` with a divider, clips the data layers
   to the plot, and returns a controller (`svg`, `content`, `plot`, `tsAtClientX`,
-  `crosshairAtClientX`, `hideCrosshair`) that `graph.js` drives. The y-axis fits
-  the data's own range (padded, floored at 0), not anchored at 0, so a garage
-  sitting far from empty still fills the plot. Reads IndexedDB first for the
-  covered window, hits the Worker for the rest.
+  `crosshairAtClientX`, `hideCrosshair`) that `graph.js` drives. The y-axis is
+  anchored at 0 (top padded to fit the data), so proximity to empty stays
+  readable rather than the axis floating up to the data's own range. Reads
+  IndexedDB first for the covered window, hits the Worker for the rest.
   - **Pan/zoom** (`graph.js`, `wireGestures`): drag to pan through time, wheel or
     two-finger pinch to zoom; the bucket (raw/hour/day) and label format follow
     the visible span (`scaleForSpan`). During a gesture the drawn `content` is
