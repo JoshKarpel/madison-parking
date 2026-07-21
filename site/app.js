@@ -11,6 +11,7 @@ import {
   humanizeAgo,
   nowSec,
   DAY_SECONDS,
+  DB_NAME,
 } from "./history.js";
 import { BUILD_ID } from "./version.js";
 import {
@@ -981,19 +982,22 @@ async function resetAppData() {
     localStorage.clear();
   } catch {}
 
-  if (window.indexedDB?.databases) {
-    const dbs = await indexedDB.databases().catch(() => []);
+  if (window.indexedDB) {
+    // Union our known DB with whatever enumeration finds: databases() is absent
+    // in some browsers (e.g. Firefox), so relying on it alone would silently
+    // leave our own history/stats cache intact on those.
+    const enumerated = indexedDB.databases
+      ? await indexedDB.databases().catch(() => [])
+      : [];
+    const names = new Set([DB_NAME, ...enumerated.map((d) => d.name).filter(Boolean)]);
     await Promise.all(
-      dbs
-        .map((d) => d.name)
-        .filter(Boolean)
-        .map(
-          (name) =>
-            new Promise((resolve) => {
-              const req = indexedDB.deleteDatabase(name);
-              req.onsuccess = req.onerror = req.onblocked = () => resolve();
-            })
-        )
+      [...names].map(
+        (name) =>
+          new Promise((resolve) => {
+            const req = indexedDB.deleteDatabase(name);
+            req.onsuccess = req.onerror = req.onblocked = () => resolve();
+          })
+      )
     );
   }
 

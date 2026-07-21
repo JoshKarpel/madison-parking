@@ -5,7 +5,7 @@
 // Everything degrades: if IndexedDB is unavailable or a fetch fails, callers
 // fall back to hitting the Worker directly, and the app still renders.
 
-const DB_NAME = "madison-parking-history";
+export const DB_NAME = "madison-parking-history";
 const DB_VERSION = 1;
 
 const BUILD_ID_KEY = "buildId"; // meta record tracking the deploy that filled the derived caches
