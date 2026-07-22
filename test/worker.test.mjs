@@ -6,6 +6,7 @@ import {
   percentile,
   computeCells,
   estimateCapacity,
+  parseEvents,
   cronAction,
   retentionCutoffSec,
   safeEqual,
@@ -192,12 +193,76 @@ test("safeEqual rejects non-strings (missing or malformed header)", () => {
   ok(!safeEqual(undefined, "expected-token"));
 });
 
+// --- Ticketmaster event parsing ----------------------------------------------
+
+// A window that comfortably holds the sample events below.
+const EV_SINCE = epoch("2026-07-20T00:00:00Z");
+const EV_UNTIL = EV_SINCE + 45 * 86400;
+
+// A well-formed Discovery API event, with knobs to break each field in a test.
+function tmEvent(overrides = {}) {
+  const base = {
+    id: "evt-1",
+    name: "Concert at the Orpheum",
+    url: "https://www.ticketmaster.com/evt-1",
+    dates: { start: { dateTime: "2026-07-25T01:00:00Z" }, status: { code: "onsale" } },
+    classifications: [{ primary: true, segment: { name: "Music" } }],
+    _embedded: { venues: [{ name: "Orpheum Theater", location: { latitude: "43.0752", longitude: "-89.3887" } }] },
+  };
+  return { ...base, ...overrides };
+}
+
+function parseOne(overrides) {
+  return parseEvents({ _embedded: { events: [tmEvent(overrides)] } }, EV_SINCE, EV_UNTIL);
+}
+
+test("parseEvents pulls the fields we need from a well-formed event", () => {
+  const [row] = parseEvents({ _embedded: { events: [tmEvent()] } }, EV_SINCE, EV_UNTIL);
+  eq(row.id, "evt-1");
+  eq(row.title, "Concert at the Orpheum");
+  eq(row.venue, "Orpheum Theater");
+  eq(row.starts_at, epoch("2026-07-25T01:00:00Z"));
+  eq(row.lat, 43.0752);
+  eq(row.lon, -89.3887);
+  eq(row.url, "https://www.ticketmaster.com/evt-1");
+  eq(row.classification, "Music");
+});
+
+test("parseEvents drops a cancelled event", () => {
+  eq(parseOne({ dates: { start: { dateTime: "2026-07-25T01:00:00Z" }, status: { code: "cancelled" } } }), []);
+});
+
+test("parseEvents drops an event with no specific start time (TBA)", () => {
+  eq(parseOne({ dates: { start: { localDate: "2026-07-25", dateTBA: true } } }), []);
+});
+
+test("parseEvents drops events outside the [since, until] window", () => {
+  eq(parseOne({ dates: { start: { dateTime: "2026-07-19T00:00:00Z" } } }), []); // before since
+  eq(parseOne({ dates: { start: { dateTime: "2026-10-01T00:00:00Z" } } }), []); // after until
+});
+
+test("parseEvents drops an event whose venue has no coordinates", () => {
+  eq(parseOne({ _embedded: { venues: [{ name: "Mystery Venue" }] } }), []);
+});
+
+test("parseEvents defaults a missing url and classification to null", () => {
+  const [row] = parseOne({ url: undefined, classifications: [] });
+  eq(row.url, null);
+  eq(row.classification, null);
+});
+
+test("parseEvents returns nothing for a response with no events array", () => {
+  eq(parseEvents({}, EV_SINCE, EV_UNTIL), []);
+  eq(parseEvents({ _embedded: {} }, EV_SINCE, EV_UNTIL), []);
+});
+
 // --- usage metric labels -----------------------------------------------------
 
 test("endpointLabel maps each route to a stable, bounded label", () => {
   eq(endpointLabel("/history"), "history");
   eq(endpointLabel("/history/sync"), "sync");
   eq(endpointLabel("/stats"), "stats");
+  eq(endpointLabel("/events"), "events");
   eq(endpointLabel("/admin/rebuild-stats"), "admin");
 });
 

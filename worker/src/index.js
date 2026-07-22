@@ -44,6 +44,35 @@ const RETENTION_SECONDS = 5 * 365 * 86400;
 // capacity change (a floor closing) instead of pinning a value that no longer holds.
 const CAPACITY_WINDOW_SECONDS = 30 * 86400;
 
+// --- Events (Ticketmaster Discovery API proxy) -------------------------------
+// We surface upcoming events at downtown venues so the client can correlate a
+// crowd with parking demand. Ticketmaster's terms allow caching Event Content
+// only "for reasonable periods in order to provide the service", so the Worker
+// deliberately does NOT store events: it proxies the Discovery API live and
+// edge-caches the response briefly, and the client keeps only a short-lived
+// cache. There is no events table and no cron for events (unlike the parking
+// samples, which are the city's own data we do retain).
+const TICKETMASTER_EVENTS_URL = "https://app.ticketmaster.com/discovery/v2/events.json";
+
+// Venue search: centered on the Capitol Square, a radius wide enough to reach
+// every downtown ramp's venues (Kohl Center, The Sylvee, Overture, Orpheum,
+// Majestic). The client narrows each event to the garages within walking
+// distance, so this only needs to be generous, not precise.
+const EVENT_SEARCH_LATLONG = "43.0747,-89.3844";
+const EVENT_SEARCH_RADIUS_MILES = 3;
+
+// Only upcoming events matter for parking; a 45-day horizon keeps the response
+// to a page or two. A few hours of grace on the past end so an event that just
+// started still marks near the chart's "now" line.
+const EVENT_HORIZON_SECONDS = 45 * 86400;
+const EVENT_PAST_GRACE_SECONDS = 3 * 3600;
+
+// How long the edge/browser may reuse the events response. Events change at most
+// a few times a day, and the request window is floored to the hour, so caching
+// this long keeps upstream calls (and key usage) low while staying well within
+// "reasonable periods".
+const EVENTS_CACHE_TTL_SECONDS = 60 * 60;
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -92,6 +121,8 @@ async function route(request, url, env) {
         return await handleSync(url, env);
       case "/stats":
         return await handleStats(url, env);
+      case "/events":
+        return await handleEvents(env);
       default:
         return await handleSnapshot();
     }
@@ -113,6 +144,8 @@ function endpointLabel(pathname) {
       return "sync";
     case "/stats":
       return "stats";
+    case "/events":
+      return "events";
     case "/admin/rebuild-stats":
       return "admin";
     default:
@@ -156,6 +189,118 @@ async function handleSnapshot() {
   return json({ ...data, observed_at: parseFeedModified(data.modified) }, 200, {
     "Cache-Control": `public, max-age=${CLIENT_MAX_AGE_SECONDS}`,
   });
+}
+
+// --- Events (live proxy, never stored) ---------------------------------------
+
+async function handleEvents(env) {
+  const now = nowSec();
+  // Floor the window to the hour so the upstream URL (and thus its edge-cache
+  // key) is stable within the hour instead of shifting every second.
+  const anchor = Math.floor(now / 3600) * 3600;
+  const since = anchor - EVENT_PAST_GRACE_SECONDS;
+  const until = anchor + EVENT_HORIZON_SECONDS;
+
+  if (!env.TICKETMASTER_API_KEY) {
+    console.log("events: no TICKETMASTER_API_KEY configured, returning none");
+    return json({ events: [] }, 200, {
+      "Cache-Control": `public, max-age=${EVENTS_CACHE_TTL_SECONDS}`,
+    });
+  }
+
+  let events;
+  try {
+    events = await fetchEvents(env.TICKETMASTER_API_KEY, since, until);
+  } catch (err) {
+    return json({ error: "events upstream failed", detail: String(err) }, 502);
+  }
+  return json({ events }, 200, {
+    "Cache-Control": `public, max-age=${EVENTS_CACHE_TTL_SECONDS}`,
+  });
+}
+
+// Ticketmaster wants a second-precision ISO instant without milliseconds.
+function isoSecond(sec) {
+  return new Date(sec * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+// Fetch the upcoming-events window from the Discovery API, following pagination
+// (a 45-day window is a page or two), and return slim de-duplicated rows sorted
+// by start. Edge-cached via cf so repeat requests in the hour don't re-hit the
+// upstream. Throws on an upstream error, which the caller maps to a 502.
+async function fetchEvents(apiKey, sinceSec, untilSec) {
+  const byId = new Map();
+  for (let page = 0; page < 3; page++) {
+    const params = new URLSearchParams({
+      apikey: apiKey,
+      latlong: EVENT_SEARCH_LATLONG,
+      radius: String(EVENT_SEARCH_RADIUS_MILES),
+      unit: "miles",
+      size: "100",
+      sort: "date,asc",
+      startDateTime: isoSecond(sinceSec),
+      endDateTime: isoSecond(untilSec),
+      page: String(page),
+    });
+    const res = await fetch(`${TICKETMASTER_EVENTS_URL}?${params}`, {
+      cf: { cacheTtl: EVENTS_CACHE_TTL_SECONDS, cacheEverything: true },
+    });
+    if (!res.ok) throw new Error(`ticketmaster ${res.status}`);
+    const body = await res.json();
+    for (const row of parseEvents(body, sinceSec, untilSec)) byId.set(row.id, row);
+    const totalPages = body.page && body.page.totalPages ? body.page.totalPages : 1;
+    if (page + 1 >= totalPages) break;
+  }
+  return [...byId.values()].sort((a, b) => a.starts_at - b.starts_at);
+}
+
+// The primary classification's segment name ("Music", "Sports", ...), or null.
+function primarySegment(event) {
+  const classes = Array.isArray(event.classifications) ? event.classifications : [];
+  const primary = classes.find((c) => c && c.primary) || classes[0];
+  const name = primary && primary.segment && primary.segment.name;
+  return typeof name === "string" ? name : null;
+}
+
+// Parse a Discovery API events response into slim rows, keeping only events we
+// can place on a timeline near our venues. Pure: response + window in, rows out.
+// Drops events that are cancelled, have no specific start time (TBA), fall
+// outside [sinceSec, untilSec], or lack a venue with coordinates. The venue
+// coordinates travel to the client, which maps each event to nearby garages.
+function parseEvents(body, sinceSec, untilSec) {
+  const events = body && body._embedded && body._embedded.events;
+  if (!Array.isArray(events)) return [];
+
+  const rows = [];
+  for (const event of events) {
+    if (typeof event.id !== "string" || typeof event.name !== "string") continue;
+
+    const start = event.dates && event.dates.start;
+    const dateTime = start && start.dateTime; // UTC ISO, e.g. "2026-07-25T01:00:00Z"
+    if (typeof dateTime !== "string") continue; // time TBA: can't place it
+    if (event.dates.status && event.dates.status.code === "cancelled") continue;
+
+    const startsAt = Math.floor(Date.parse(dateTime) / 1000);
+    if (!Number.isFinite(startsAt) || startsAt < sinceSec || startsAt > untilSec) continue;
+
+    const venue = event._embedded && event._embedded.venues && event._embedded.venues[0];
+    const location = venue && venue.location;
+    const lat = location ? Number(location.latitude) : NaN;
+    const lon = location ? Number(location.longitude) : NaN;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+
+    rows.push({
+      id: event.id,
+      title: event.name,
+      venue: typeof venue.name === "string" ? venue.name : "",
+      lat,
+      lon,
+      starts_at: startsAt,
+      url: typeof event.url === "string" ? event.url : null,
+      classification: primarySegment(event),
+    });
+  }
+  return rows;
 }
 
 // --- Collection --------------------------------------------------------------
@@ -621,6 +766,7 @@ export {
   percentile,
   computeCells,
   estimateCapacity,
+  parseEvents,
   cronAction,
   retentionCutoffSec,
   safeEqual,

@@ -72,6 +72,7 @@ export function renderChart(spec) {
     actual = [],
     predicted = [],
     baseline = null,
+    events = [],
     domain = null,
     nowTs = null,
     band = false,
@@ -217,7 +218,36 @@ export function renderChart(spec) {
 
   const plot = { left: PAD.left, top: PAD.top, w: plotW, h: plotH };
   const controller = attachCrosshair(svg, { actual, predicted, x, y, plot, t0, tSpan, pointFormat });
-  return { svg, content, plot, ...controller };
+
+  // Venue-event markers: a vertical tick at each event's start time with its
+  // category emoji at the top. Drawn in their own layer *above* the gesture
+  // surface so the emoji is tappable — a small transparent hit rect over it
+  // carries the tap (its `data-url` is the show's Ticketmaster page, which
+  // graph.js opens; a plain anchor can't be relied on here, since the pan
+  // gesture's pointer capture steals the click). The tick and emoji stay
+  // non-interactive (CSS pointer-events:none) so the rest of the plot is free for
+  // pan/zoom. graph.js transforms this layer in lockstep with `content` during a
+  // gesture, so markers track the data; the <title> names the event on hover.
+  const eventsLayer = el("g", { class: "chart-events", "clip-path": `url(#${clipId})` });
+  for (const ev of events) {
+    if (ev.ts < t0 || ev.ts > t1) continue;
+    const ex = x(ev.ts);
+    const marker = el("g");
+    const tip = el("title");
+    tip.textContent = ev.title ? (ev.url ? `${ev.title} · tickets` : ev.title) : "";
+    marker.append(tip);
+    marker.append(el("line", { x1: ex, y1: PAD.top, x2: ex, y2: PAD.top + plotH, class: "chart-event" }));
+    const label = el("text", { x: ex, y: PAD.top + 8, class: "chart-event-label", "text-anchor": "middle" });
+    label.textContent = ev.emoji || "•";
+    marker.append(label);
+    if (ev.url) {
+      marker.append(el("rect", { x: ex - 9, y: PAD.top, width: 18, height: 18, class: "chart-event-hit", "data-url": ev.url }));
+    }
+    eventsLayer.append(marker);
+  }
+  svg.append(eventsLayer);
+
+  return { svg, content, eventsLayer, plot, ...controller };
 }
 
 // Build the crosshair overlay and the pixel/time mapping, and return the methods

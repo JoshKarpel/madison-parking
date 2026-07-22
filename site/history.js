@@ -18,6 +18,12 @@ export const DAY_SECONDS = 86400;
 const RETENTION_SECONDS = 365 * DAY_SECONDS;
 const STATS_TTL_SECONDS = 6 * 60 * 60;
 
+// Upcoming venue events are cached only briefly: they're proxied live from
+// Ticketmaster, whose terms allow caching for "reasonable periods" only, so this
+// is a short performance cache, never a stored history. Refetched past the TTL.
+const EVENTS_TTL_SECONDS = 60 * 60;
+const EVENTS_KEY = "events"; // single STORE_META record holding the whole list
+
 // The Worker rebuilds the /stats baselines weekly. If the newest baseline is
 // older than this, that cron has almost certainly stopped — the footer surfaces
 // it as a plain "something is wrong" signal. Just past the 7-day cadence, so one
@@ -101,7 +107,9 @@ async function clearDerivedCaches(db) {
 
   const meta = tx(db, STORE_META, "readwrite");
   for (const key of await done(meta.getAllKeys())) {
-    if (typeof key === "string" && key.startsWith("stats:")) meta.delete(key);
+    if (typeof key === "string" && (key.startsWith("stats:") || key === EVENTS_KEY)) {
+      meta.delete(key);
+    }
   }
   await txDone(meta.transaction);
 }
@@ -347,6 +355,38 @@ export async function getStats(db, apiUrl, garage) {
     return stats;
   } catch (err) {
     if (cached) return cached.stats;
+    throw err;
+  }
+}
+
+// --- venue events ------------------------------------------------------------
+
+// Upcoming events near downtown, from the Worker's live Ticketmaster proxy.
+// Cached in IndexedDB for EVENTS_TTL_SECONDS (a short performance cache, not a
+// stored history), refetched past that. Falls back to the cached copy when
+// offline, and to a bare network fetch with no db. Returns an array (possibly
+// empty); the caller maps each event to nearby garages (site/events.js).
+export async function getEvents(db, apiUrl) {
+  let cached = null;
+  if (db) {
+    cached = await done(tx(db, STORE_META, "readonly").get(EVENTS_KEY));
+    if (cached && nowSec() - cached.fetchedAt < EVENTS_TTL_SECONDS) {
+      return cached.events;
+    }
+  }
+  try {
+    const res = await fetch(`${apiUrl}/events`);
+    if (!res.ok) throw new Error(`events HTTP ${res.status}`);
+    const body = await res.json();
+    const events = Array.isArray(body.events) ? body.events : [];
+    if (db) {
+      const store = tx(db, STORE_META, "readwrite");
+      store.put({ key: EVENTS_KEY, fetchedAt: nowSec(), events });
+      await txDone(store.transaction);
+    }
+    return events;
+  } catch (err) {
+    if (cached) return cached.events;
     throw err;
   }
 }

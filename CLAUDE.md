@@ -12,8 +12,11 @@ parking garages, for two users on Android. Three pieces, deployed together:
 - **`worker/`** — a Cloudflare Worker that proxies the city's JSON feed (adds
   CORS, edge-caches 60s, returns 502 on upstream failure) and, on cron triggers,
   records history into a D1 database and serves it back (see History below). It
-  also emits one aggregate Analytics Engine data point per request (endpoint +
-  coarse country + status, no per-user identifier) for a rough usage signal; see
+  also proxies upcoming venue events from the Ticketmaster Discovery API
+  (`/events`), **live and never stored** (their terms forbid retention), so the
+  client can correlate a crowd with parking demand (see Events below). It also
+  emits one aggregate Analytics Engine data point per request (endpoint + coarse
+  country + status, no per-user identifier) for a rough usage signal; see
   `worker/README.md`.
 - **`.github/workflows/deploy.yml`** — one workflow: a `test` job (plain `node`)
   gates `deploy-site` (Pages) and `deploy-worker` (`wrangler deploy`), all on
@@ -22,8 +25,11 @@ parking garages, for two users on Android. Three pieces, deployed together:
 Data flow (live): city feed → Worker (`API_URL`) → browser `fetch` →
 `localStorage` cache + render. History: Worker cron → D1; browser →
 `/history*` + `/stats` → IndexedDB cache → graphs, fullness coloring, and the
-slot-comparison tidbit. The only persistence is the Worker's D1 history store;
-the client is purely a reader (it never collects data itself).
+slot-comparison tidbit. Events: Worker → Ticketmaster Discovery API (`/events`,
+live proxy, never stored) → browser → short-lived IndexedDB cache → per-garage
+event badges + chart markers. The only persistence is the Worker's D1 history
+store; the client is purely a reader (it never collects data itself), and event
+data is never persisted anywhere.
 
 ## Hard constraints (do not violate)
 
@@ -39,6 +45,15 @@ the client is purely a reader (it never collects data itself).
   only when it's today, date and time otherwise) and its relative "N minutes ago"
   trailer from `observed_at`, and shows "unknown" when the epoch is absent. It
   never reads the `modified` string; never hand-roll a ±5/6 offset.
+- **Event data is proxied live and never persisted.** Ticketmaster's terms allow
+  caching Event Content only "for reasonable periods to provide the service", so
+  `/events` fetches the Discovery API on demand, edge-caches ~1h, and the client
+  keeps only a short-lived IndexedDB cache. There is deliberately no events table
+  and no events cron (unlike the parking samples, which are the city's own data
+  we do retain in D1). Don't add historical event storage. The Worker stays
+  garage-agnostic: it ships each venue's coordinates and the client maps events
+  to nearby garages (`site/events.js`), so garage identity stays solely in
+  `site/garages.js`. Events link back to their Ticketmaster page (attribution).
 - **There is no *real* total-capacity figure anywhere; capacity is estimated,
   and any fullness number is labeled an estimate.** The feed gives vacancy
   *counts only*. We estimate each garage's capacity as a high-water mark (the
@@ -60,8 +75,10 @@ the client is purely a reader (it never collects data itself).
 ## Garage identity
 
 `site/garages.js` is the single source of truth mapping feed IDs to
-`{ name, address, note }`. Addresses are the city's official ones and drive the
-Google Maps links; notes are optional landmark hints.
+`{ name, address, placeCid, lat, lon, note }`. Addresses are the city's official
+ones and drive the Google Maps links; notes are optional landmark hints; `lat`/
+`lon` (geocoded from the address) let the client match nearby venue events to a
+garage (`site/events.js`).
 
 Rendering (`garageEntries` in `app.js`) unions known garages with whatever the
 feed returns, so an unmapped ID renders as `Ramp <id>` and a mapped ID missing
@@ -243,6 +260,13 @@ fullness coloring, and the slot-comparison tidbit. Full detail in
     time (`pointFormat`) and count (future points tagged "(typical)"). A mouse
     hover clears on leave and on pan start; a touch readout persists until the
     next tap.
+  - **Event markers** (`renderChart`'s `events`, fed by `graph.js`'s injected
+    `getEvents`): a vertical tick + category emoji at each nearby event's start
+    within the window, in a layer *above* the capture surface so the emoji stays
+    tappable. `graph.js` opens the show's Ticketmaster page on a tap (via the hit
+    rect's `data-url`); a plain SVG anchor can't be used, since the pan gesture's
+    pointer capture would swallow the click. Markers carry the event's `url`
+    end-to-end and pan/zoom in lockstep with the data content.
 
 ## Service worker updates (important)
 
@@ -266,7 +290,7 @@ touch caching, preserve
 this: changing shell assets without changing `sw.js` means clients keep serving
 stale files. The `SHELL` list must include every ES module the app imports
 (`app.js`, `version.js`, `history.js`, `coloring.js`, `chart.js`, `graph.js`,
-`garages.js`, `theme.js`) plus the self-hosted theme fonts
+`garages.js`, `events.js`, `theme.js`) plus the self-hosted theme fonts
 (`fonts/*.woff2`); a module or asset missing from it won't be available offline.
 
 A second stamp, `__ICON_HASH__`, versions the PWA icon URLs. The icon
@@ -311,23 +335,40 @@ Recipes live in the `justfile` (`just --list`):
 
 `test/` holds a no-framework harness (`harness.mjs`) run by `test/run.mjs`
 (`just test`), covering the pure logic: the Worker's timestamp/timezone parsing,
-percentiles, capacity estimate, cron dispatch and retention (`worker/src/index.js`
-exports these); the client's fullness bands and free percent, slot-comparison
-bands, and busiest-hour forecast (`site/coloring.js`), the recent-trend classifier
-and relative-time/stats-freshness helpers (`site/history.js`); and the service
-worker's offline fetch fallback (loaded into a `vm` with mocked globals). Only
+percentiles, capacity estimate, cron dispatch and retention, and Ticketmaster
+event parsing (`worker/src/index.js` exports these); the client's fullness bands
+and free percent, slot-comparison bands, and busiest-hour forecast
+(`site/coloring.js`), the recent-trend classifier and relative-time/stats-freshness
+helpers (`site/history.js`), and the venue-to-garage event mapping
+(`site/events.js`); and the service worker's offline fetch fallback (loaded into
+a `vm` with mocked globals). Only
 functions may be exported from the Worker module besides `default` (the runtime
 treats other named exports as entrypoints), so export helpers, not constants.
 
-For runtime behavior, `node --check` each module, then drive the rendered page
-in headless Chrome. See the `testing-parking-pwa` project memory for the full
-playbook, including CDP driving (expand a card's inline graph, cycle ranges),
-testing offline against a mock Worker, and exercising the reorder and
-minimize/restore controls.
+For runtime behavior, `node --check` each module, then drive the rendered page in
+a real browser. See the `testing-parking-pwa` project memory for the full
+playbook (expand a card's inline graph, cycle ranges, test offline against a mock
+Worker, exercise the reorder and minimize/restore controls).
 
-Headless Chrome on this machine needs `--password-store=basic --use-mock-keychain`
-(avoids a GNOME keyring popup) and `--no-sandbox` (WSL); the `just` recipes
-already include these.
+**Driving the browser (Playwright).** The system `google-chrome` isn't reliably
+on PATH here, so browser-driven checks use Playwright's headless Chromium. Run
+`just setup` once (installs the `playwright` package and its Chromium build; both
+are dev-only and git-ignored, so the committed tree stays free of npm deps, and
+this is *not* part of `just test`, which stays plain `node` for CI). Then drive
+the page from a throwaway node script (keep it in the scratchpad, not the repo):
+serve `site/` with a tiny static server (or `just serve`), `import` playwright
+from the repo's `node_modules` (a CJS interop caveat: `const chromium =
+(await import(".../node_modules/playwright/index.js")).default.chromium`), launch
+with `args: ["--no-sandbox"]` (WSL), load the page, and exercise it. This is the
+reliable way to catch DOM-render bugs that pure-logic unit tests can't: e.g. a
+marker was drawn but unclickable because `graph.js` dropped the event's `url`
+before handing it to the chart — invisible to `node --check` and the unit suite,
+caught immediately by clicking a `.chart-event-hit` and asserting a `page` popup
+opens on its Ticketmaster `data-url`.
+
+The legacy `just shot`/`just dump` recipes shell out to a system `google-chrome`
+with `--password-store=basic --use-mock-keychain` (avoids a GNOME keyring popup)
+and `--no-sandbox` (WSL); use them only where that binary is actually present.
 
 ## Deploying
 

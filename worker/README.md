@@ -70,6 +70,42 @@ fabricated timestamp), keeping collection idempotent.
   `just worker-rotate-token` recipe to set the secret and `just
   worker-rebuild-stats` to invoke it.
 
+## Events
+
+To help explain a crowded ramp, the Worker surfaces upcoming events at nearby
+venues (a concert, a game) from the
+[Ticketmaster Discovery API](https://developer.ticketmaster.com/products-and-docs/apis/discovery-api/v2/).
+
+- `GET /events` returns upcoming events near downtown as slim rows
+  (`{ id, title, venue, lat, lon, starts_at, url, classification }`), sorted by
+  start. `starts_at` is UTC epoch seconds, like `samples.observed_at`. Cached at
+  the edge and in the browser for an hour (`EVENTS_CACHE_TTL_SECONDS`); the
+  request window is floored to the hour so repeat calls reuse the same upstream
+  response. On an upstream error it returns `502`; with no API key configured it
+  returns an empty list (the feature simply shows nothing).
+
+**Not stored.** Unlike the parking samples (the city's own data, which we
+retain), event data is *proxied live and never persisted*. Ticketmaster's
+[terms](https://developer.ticketmaster.com/support/terms-of-use/) permit caching
+Event Content only "for reasonable periods in order to provide the service", so
+there is no events table and no cron: the Worker fetches on demand, edge-caches
+briefly, and the client keeps only a short-lived cache. Each event links back to
+its Ticketmaster page.
+
+The Worker stays garage-agnostic here too: it ships the venue's coordinates and
+lets the client match each event to the garages within walking distance
+(`site/events.js`), so garage identity stays solely in `site/garages.js`.
+
+### Set the API key
+
+`GET /events` needs a Ticketmaster Discovery API key in the `TICKETMASTER_API_KEY`
+secret (a free Consumer Key from
+[developer.ticketmaster.com](https://developer.ticketmaster.com/) → My Apps).
+Put it in the repo-root `.env` and push it to the Worker with
+`just worker-set-ticketmaster-key`. For local `wrangler dev`, add the same line
+to `worker/.dev.vars` (git-ignored). Without the key the endpoint returns an
+empty list.
+
 ## Usage metrics
 
 To get a rough sense of how much the app is used without tracking anyone, the

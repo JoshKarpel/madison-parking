@@ -23,6 +23,15 @@ test:
 
 alias t := test
 
+# One-time: install Playwright + its headless Chromium for browser-driven checks
+# (the system google-chrome isn't reliably on PATH). Dev-only and git-ignored, so
+# the committed tree stays free of npm deps; this recipe is the record. Not part
+# of `just test`, which stays plain node for CI. See the Testing notes in CLAUDE.md.
+[doc("Install Playwright + headless Chromium for browser-driven tests (one-time)")]
+setup:
+    npm install playwright
+    npx playwright install chromium
+
 [group('worker')]
 [doc("Authenticate wrangler with Cloudflare (first time only)")]
 worker-login:
@@ -83,6 +92,15 @@ worker-rotate-token:
     { grep -v '^ADMIN_TOKEN=' .env 2>/dev/null || true; echo "ADMIN_TOKEN=$token"; } > .env.tmp
     mv .env.tmp .env
     echo "ADMIN_TOKEN rotated: Worker secret updated and .env synced."
+
+[group('worker')]
+[doc("Push the Ticketmaster Discovery API key (from .env) to the Worker secret")]
+worker-set-ticketmaster-key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    key="$(awk '/^TICKETMASTER_API_KEY=/{sub(/^TICKETMASTER_API_KEY=/,"");print;exit}' .env)"
+    [[ -n "$key" ]] || { echo "TICKETMASTER_API_KEY not set in .env"; exit 1; }
+    printf '%s' "$key" | (cd worker && npx wrangler secret put TICKETMASTER_API_KEY)
 
 [group('site')]
 [doc("Serve the static site locally at http://localhost:8137")]

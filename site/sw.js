@@ -14,6 +14,7 @@ const SHELL = [
   "./coloring.js",
   "./chart.js",
   "./graph.js",
+  "./events.js",
   "./theme.js",
   "./sky.js",
   "./style.css",

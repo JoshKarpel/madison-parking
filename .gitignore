@@ -3,5 +3,10 @@ node_modules/
 .wrangler/
 .dev.vars
 
+# Dev-only browser-test tooling (Playwright); installed by `just setup`, never
+# committed, so the site stays free of npm deps. The recipe is the record.
+package.json
+package-lock.json
+
 # Headless-test screenshot output (see `just shot`).
 /shot.png

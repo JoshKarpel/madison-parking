@@ -692,7 +692,7 @@ h2 {
   font-weight: 600;
   font-size: 1.1rem;
   color: var(--muted);
-  padding: 0 1.5rem;
+  padding: 0 2.5rem;
 }
 
 /* Big, thumb-glanceable numbers on the full cards. */
@@ -716,7 +716,7 @@ h2 {
   font-size: 0.8rem;
   color: var(--muted);
   font-style: italic;
-  padding: 0 1.5rem;
+  padding: 0 2.5rem;
 }
 
 /* Minimized: a compact one-line row (name + count), the whole row a restore
@@ -805,7 +805,7 @@ h2 {
   margin-top: 0.15rem;
   font-size: 0.75rem;
   color: var(--muted);
-  padding: 0 1.5rem;
+  padding: 0 2.5rem;
 }
 
 /* Short-term direction. Filling up (losing spots) reads as a warning colour;
@@ -831,7 +831,26 @@ h2 {
   font-size: 0.72rem;
   color: var(--muted);
   font-style: italic;
-  padding: 0 1.5rem;
+  padding: 0 2.5rem;
+}
+
+/* Upcoming nearby event, linked to its ticket page. A brighter accent than the
+   muted heads-up lines, since a venue event is a strong parking-demand signal.
+   Clipped to one line so a long title can't blow out the card. */
+.card .event {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--blue);
+  text-decoration: none;
+  padding: 0 2.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card .event:hover {
+  text-decoration: underline;
 }
 
 
@@ -1357,6 +1376,28 @@ body.sky-peek #sky-peek-exit {
 .chart-now-label {
   fill: var(--muted);
   font-size: 10px;
+}
+
+/* Venue-event markers: a faint vertical tick with a category emoji at the top.
+   The tick and emoji are non-interactive; a transparent hit rect over the emoji
+   (below) carries the click to its Ticketmaster link, leaving the rest of the
+   plot free for pan/zoom gestures. */
+.chart-event {
+  stroke: var(--blue);
+  stroke-width: 1;
+  stroke-dasharray: 1 3;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.chart-event-label {
+  font-size: 9px;
+  pointer-events: none;
+}
+
+.chart-event-hit {
+  fill: transparent;
+  cursor: pointer;
 }
 
 /* Pan/zoom/crosshair capture surface over the plot. touch-action:none claims all

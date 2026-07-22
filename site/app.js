@@ -6,6 +6,7 @@ import {
   syncSamples,
   getStats,
   getRecentSamples,
+  getEvents,
   computeTrend,
   statsFreshness,
   humanizeAgo,
@@ -13,6 +14,7 @@ import {
   DAY_SECONDS,
   DB_NAME,
 } from "./history.js";
+import { cardEventsForGarage, eventsForGarage, eventEmoji } from "./events.js";
 import { BUILD_ID } from "./version.js";
 import {
   classifyFullness,
@@ -69,6 +71,14 @@ const REFRESH_INTERVAL_MS = 60_000;
 // The feed updates every 1-4 min, so 30 min holds ~10-20 samples: enough for the
 // relative threshold to smooth jitter, short enough to reflect "right now".
 const TREND_WINDOW_SECONDS = 30 * 60;
+
+// How a card surfaces nearby venue events: any that are probably still ongoing
+// (started within this grace, matching the Worker's past-grace window so an
+// in-progress show still appears), plus the soonest upcoming within a week, up to
+// MAX_CARD_EVENTS lines — a short heads-up, not a full calendar.
+const EVENT_ONGOING_GRACE_SECONDS = 3 * 3600;
+const EVENT_HEADS_UP_SECONDS = 7 * DAY_SECONDS;
+const MAX_CARD_EVENTS = 3;
 
 const TREND_TEXT = {
   filling: "▼ filling up",
@@ -190,6 +200,12 @@ let historyDb = null;
 const statsByGarage = new Map();
 const trendByGarage = new Map();
 
+// Upcoming venue events near downtown (all garages), refreshed on the poll
+// cadence from the Worker's live Ticketmaster proxy. A garage's own events are
+// derived by proximity (site/events.js) when rendering. Empty until loaded, and
+// on any failure, so the cards and charts simply show no events.
+let venueEvents = [];
+
 // The garage whose card is currently expanded into its trend view (at most one),
 // and the reusable view element it mounts. Injects the Worker URL and getters
 // for the async-filled history db and each garage's baseline cells.
@@ -198,6 +214,7 @@ const graphView = createGraphView({
   apiUrl: API_URL,
   getHistoryDb: () => historyDb,
   getCells: (id) => cellsFor(id),
+  getEvents: (id) => eventsForGarage(venueEvents, id),
 });
 
 function toggleExpanded(id) {
@@ -390,6 +407,18 @@ function makeCard(entry, { minimized, index, total }) {
     summary.append(el);
   }
 
+  // Nearby events (via Ticketmaster), each linked to its ticket page: a heads-up
+  // that demand may spike. Shows any in-progress show plus the next few this week,
+  // soonest first. Nothing shown when no nearby event is coming up.
+  const now = nowSec();
+  for (const event of cardEventsForGarage(venueEvents, entry.id, now, {
+    ongoingSeconds: EVENT_ONGOING_GRACE_SECONDS,
+    horizonSeconds: EVENT_HEADS_UP_SECONDS,
+    limit: MAX_CARD_EVENTS,
+  })) {
+    summary.append(makeEventBadge(event, now));
+  }
+
   // Reorder with up/down arrows in the left corners, disabled at the ends of
   // the active list (only meaningful when there's more than one card).
   if (total > 1) {
@@ -451,6 +480,51 @@ function makeMapLink(entry) {
   link.textContent = "🗺️";
   link.setAttribute("aria-label", `Open ${entry.name} in Google Maps`);
   return link;
+}
+
+const eventTimeFmt = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" });
+const eventWeekdayFmt = new Intl.DateTimeFormat([], { weekday: "short" });
+const eventDateFmt = new Intl.DateTimeFormat([], { month: "short", day: "numeric" });
+
+function startOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+// Concise localized "when" for an event: time only if today, "Tomorrow 7pm" the
+// next day, a weekday within the week, else a short date. Pure formatting.
+function formatEventTime(startsAt) {
+  const when = new Date(startsAt * 1000);
+  const time = eventTimeFmt.format(when);
+  const days = Math.round((startOfDay(when) - startOfDay(new Date())) / DAY_SECONDS / 1000);
+  if (days <= 0) return time;
+  if (days === 1) return `Tomorrow ${time}`;
+  if (days < 7) return `${eventWeekdayFmt.format(when)} ${time}`;
+  return `${eventDateFmt.format(when)} ${time}`;
+}
+
+// The card's next-event line, linked to the Ticketmaster page (both a heads-up
+// and the courtesy link-back their terms ask for). Falls back to plain text when
+// an event has no url.
+function makeEventBadge(event, now) {
+  const when = event.starts_at <= now ? "On now" : formatEventTime(event.starts_at);
+  const where = event.venue ? `${event.venue} · ` : "";
+  const text = `${eventEmoji(event.classification)} ${when} · ${where}${event.title}`;
+  const title = event.venue ? `${event.title} · ${event.venue}` : event.title;
+  if (event.url) {
+    const link = document.createElement("a");
+    link.className = "event";
+    link.href = event.url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = text;
+    link.title = title;
+    return link;
+  }
+  const el = document.createElement("div");
+  el.className = "event";
+  el.textContent = text;
+  el.title = title;
+  return el;
 }
 
 function minimizeCard(id) {
@@ -567,6 +641,7 @@ async function refresh() {
     setStatus("live");
     refreshHistory();
     loadStats(shownGarageIds());
+    loadEvents();
   } catch {
     const cached = loadCachedData();
     setStatus(cached ? "stale" : "no-data");
@@ -746,6 +821,26 @@ function renderStatsStatus() {
   el.textContent = freshness.stale
     ? `⚠️ Stats last updated ${when} (${ago}) — updates may have stopped.`
     : `Stats updated ${when} (${ago}).`;
+}
+
+// --- Venue events ------------------------------------------------------------
+// Load upcoming nearby events (best effort) and re-render so the card badges and
+// chart markers appear/update. Runs on the poll cadence so a transient failure
+// heals on the next tick; getEvents serves its short-lived cache within the TTL,
+// so a warm reload costs no network. Guarded so overlapping refreshes don't
+// stack fetches. A failure keeps the last events (or none), never blanking the UI.
+let eventsLoading = false;
+async function loadEvents() {
+  if (eventsLoading) return;
+  eventsLoading = true;
+  try {
+    venueEvents = await getEvents(historyDb, API_URL);
+    render(lastData);
+  } catch {
+    /* offline or proxy down: keep whatever events we had */
+  } finally {
+    eventsLoading = false;
+  }
 }
 
 // --- Recent trend ------------------------------------------------------------
@@ -1075,6 +1170,7 @@ refresh();
   requestPersist();
   const ids = garageEntries(cached ? cached.vacancies : {}).map((e) => e.id);
   loadStats(ids);
+  loadEvents();
   // Top up the local sample cache and compute the initial trend indicators.
   // Best effort: offline or Worker-down leaves graphs to fall back to direct
   // fetches and the cards simply show no trend.

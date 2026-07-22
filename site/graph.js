@@ -25,6 +25,7 @@ import {
   DAY_SECONDS,
 } from "./history.js";
 import { cellKey, MIN_CELL_OBSERVATIONS } from "./coloring.js";
+import { eventEmoji } from "./events.js";
 
 const DAY = DAY_SECONDS;
 
@@ -163,7 +164,8 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 // apiUrl:        Worker base URL.
 // getHistoryDb:  () => IDBDatabase | null (filled asynchronously after open).
 // getCells:      (garageId) => cells | null (the garage's baseline, or null).
-export function createGraphView({ apiUrl, getHistoryDb, getCells }) {
+// getEvents:     (garageId) => [{ starts_at, title, classification }] near it.
+export function createGraphView({ apiUrl, getHistoryDb, getCells, getEvents }) {
   let els = null;
   let garage = null;
   let view = null; // { startTs, endTs } — the visible window
@@ -236,6 +238,16 @@ export function createGraphView({ apiUrl, getHistoryDb, getCells }) {
     }
   }
 
+  function eventMarkers() {
+    const events = (getEvents && getEvents(garage)) || [];
+    return events.map((e) => ({
+      ts: e.starts_at,
+      emoji: eventEmoji(e.classification),
+      title: e.title,
+      url: e.url,
+    }));
+  }
+
   function renderView() {
     if (!els || !loaded || !view) return;
     const { actual, predicted, predictedStep, scale } = loaded;
@@ -244,6 +256,7 @@ export function createGraphView({ apiUrl, getHistoryDb, getCells }) {
       actual,
       predicted,
       baseline,
+      events: eventMarkers(),
       domain: { t0: view.startTs, t1: view.endTs },
       nowTs: nowSec(),
       band: scale.band,
@@ -272,7 +285,11 @@ export function createGraphView({ apiUrl, getHistoryDb, getCells }) {
     const left = controller.plot.left;
     const translateX =
       left + ((renderedView.startTs - view.startTs) / vSpan) * controller.plot.w - scaleX * left;
-    controller.content.setAttribute("transform", `translate(${translateX},0) scale(${scaleX},1)`);
+    const transform = `translate(${translateX},0) scale(${scaleX},1)`;
+    controller.content.setAttribute("transform", transform);
+    // The event-marker layer sits above the gesture surface (so its links are
+    // tappable); pan/zoom it in lockstep with the data content.
+    if (controller.eventsLayer) controller.eventsLayer.setAttribute("transform", transform);
   }
 
   function zoomAround(focusTs, factor) {
@@ -293,6 +310,7 @@ export function createGraphView({ apiUrl, getHistoryDb, getCells }) {
     let press = null; // single-pointer press that may become a pan
     let panning = false;
     let pinch = null; // two-pointer zoom
+    let markerTap = null; // a press that landed on an event marker (opens its link)
     const dxOf = (a, b) => Math.abs(a.clientX - b.clientX);
     const both = () => [...pointers.values()];
 
@@ -302,6 +320,7 @@ export function createGraphView({ apiUrl, getHistoryDb, getCells }) {
         controller.hideCrosshair();
         press = null;
         panning = false;
+        markerTap = null;
         const [a, b] = both();
         const startSpan = view.endTs - view.startTs;
         const focusTs = controller.tsAtClientX((a.clientX + b.clientX) / 2);
@@ -314,6 +333,15 @@ export function createGraphView({ apiUrl, getHistoryDb, getCells }) {
         return;
       }
       if (e.button !== 0) return;
+      // A press that lands on an event marker opens its Ticketmaster link instead
+      // of starting a pan: recorded here, opened on release (below). We open it
+      // ourselves rather than making the marker a plain <a>, because capturing the
+      // pointer for a pan would swallow the anchor's native click.
+      const hit = e.target.closest && e.target.closest(".chart-event-hit");
+      if (hit) {
+        markerTap = { url: hit.getAttribute("data-url"), clientX: e.clientX };
+        return;
+      }
       press = { clientX: e.clientX, startView: { ...view } };
       panning = false;
       try {
@@ -360,6 +388,15 @@ export function createGraphView({ apiUrl, getHistoryDb, getCells }) {
       try {
         svg.releasePointerCapture(e.pointerId);
       } catch {}
+      // A tap that stayed put on an event marker opens its show; a drag from one
+      // (moved past the pan threshold) is ignored, not a mis-navigation.
+      if (markerTap) {
+        const url = markerTap.url;
+        const moved = Math.abs(e.clientX - markerTap.clientX) > 4;
+        markerTap = null;
+        if (url && !moved) window.open(url, "_blank", "noopener");
+        return;
+      }
       if (pinch) {
         if (pointers.size < 2) {
           pinch = null;
