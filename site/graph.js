@@ -140,12 +140,20 @@ function predictSeries(startTs, endTs, cells) {
     step = Math.ceil(span / MAX_PREDICT_POINTS / PREDICT_STEP) * PREDICT_STEP;
   }
   const points = [];
-  for (let t = Math.ceil(from / PREDICT_STEP) * PREDICT_STEP; t <= endTs; t += step) {
+  const emit = (t) => {
     const d = at(t);
     const cell = cells[cellKey(d.getDay(), d.getHours())];
     if (cell && cell.n >= MIN_CELL_OBSERVATIONS) {
       points.push({ ts: t, avg: cell.p50, min: cell.p25, max: cell.p75 });
     }
+  };
+  // Anchor a point at `from` (the boundary between actual and forecast) so the
+  // dashed line connects to the live data instead of starting a whole hour late,
+  // then continue on the hour boundaries past it.
+  emit(from);
+  const firstBoundary = Math.ceil(from / PREDICT_STEP) * PREDICT_STEP;
+  for (let t = firstBoundary === from ? from + step : firstBoundary; t <= endTs; t += step) {
+    emit(t);
   }
   return { points, step };
 }
