@@ -2,20 +2,21 @@
 // via viewBox, so it reads well down to ~340px wide.
 //
 // renderChart(spec) draws a fixed time window (spec.domain) rather than fitting
-// to the data, so the caller can pan and zoom the window freely: past data is
-// the actual history line, future is a prediction (dashed, from the baseline),
-// split by a "now" marker. It returns a controller the caller drives for the
-// crosshair and pixel-to-time mapping (graph.js owns the pan/zoom gestures).
+// to the data, so the caller can pan and zoom the window freely: the recorded
+// history line runs up to a "now" marker, and the "typical for this day & time"
+// overlay runs across the whole window as one continuous median + band, switching
+// style at "now" (faint context in the past, bolder forecast ahead). It returns a
+// controller the caller drives for the crosshair and pixel-to-time mapping
+// (graph.js owns the pan/zoom gestures).
 //
 // spec:
 //   actual:    [{ ts, avg, min?, max? }] the recorded history line; min/max shade
 //              an envelope behind it when `band` is set.
-//   predicted: [{ ts, avg, min, max }] the baseline forecast for future ts
-//              (avg = median, min/max = the typical p25/p75 range).
-//   baseline:  optional [{ ts, p25, p50, p75 }] the "typical for this day & time"
-//              overlay for the actual line, shaded grey with a dashed median.
+//   typical:   [{ ts, avg, min, max }] the baseline "typical for this day & time"
+//              across the window (avg = p50 median, min/max = p25/p75 range),
+//              drawn grey behind the past and as the dashed forecast ahead of now.
 //   domain:    { t0, t1 } the visible time window (x-axis extent).
-//   nowTs:     epoch of "now", drawn as a divider between actual and predicted.
+//   nowTs:     epoch of "now", drawn as a divider and the past/ahead style split.
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -70,14 +71,13 @@ let clipSeq = 0;
 export function renderChart(spec) {
   const {
     actual = [],
-    predicted = [],
-    baseline = null,
+    typical = [],
     events = [],
     domain = null,
     nowTs = null,
     band = false,
     stepSeconds,
-    predictedStepSeconds = 3600,
+    typicalStepSeconds = 3600,
     xFormat,
     pointFormat,
   } = spec;
@@ -90,17 +90,17 @@ export function renderChart(spec) {
   });
 
   const noop = () => {};
-  if (!actual.length && !predicted.length) {
+  if (!actual.length && !typical.length) {
     const t = el("text", { x: VIEW_W / 2, y: VIEW_H / 2, class: "chart-empty" });
     t.textContent = "No data for this range yet";
     svg.append(t);
     return { svg, crosshairAtClientX: () => null, hideCrosshair: noop, tsAtClientX: () => null };
   }
 
-  const first = actual[0] || predicted[0];
+  const first = actual[0] || typical[0];
   const lastActual = actual[actual.length - 1];
-  const lastPredicted = predicted[predicted.length - 1];
-  const last = lastPredicted || lastActual;
+  const lastTypical = typical[typical.length - 1];
+  const last = lastTypical || lastActual;
   const t0 = domain ? domain.t0 : first.ts;
   const t1 = domain ? domain.t1 : last.ts;
   const tSpan = Math.max(1, t1 - t0);
@@ -111,8 +111,7 @@ export function renderChart(spec) {
     if (band && p.min != null) values.push(p.min);
     if (band && p.max != null) values.push(p.max);
   }
-  for (const p of predicted) values.push(p.avg, p.min, p.max);
-  if (baseline) for (const b of baseline) values.push(b.p25, b.p75);
+  for (const p of typical) values.push(p.avg, p.min, p.max);
 
   // Anchor the y-axis at 0 so proximity to empty (the thing that matters) is
   // always readable, rather than fitting the axis to the data's own range.
@@ -166,25 +165,27 @@ export function renderChart(spec) {
     content.append(label);
   }
 
-  // Typical-range overlay, drawn first so the actual history sits on top of it.
-  if (baseline && baseline.length > 1) {
-    const top = baseline.map((b) => `${x(b.ts)},${y(b.p75)}`);
-    const bottom = baseline.slice().reverse().map((b) => `${x(b.ts)},${y(b.p25)}`);
-    content.append(el("polygon", { points: [...top, ...bottom].join(" "), class: "chart-typical-band" }));
-    const median = baseline.map((b, i) => `${i === 0 ? "M" : "L"}${x(b.ts)} ${y(b.p50)}`).join(" ");
-    content.append(el("path", { d: median, class: "chart-typical-median", fill: "none" }));
-  }
-
-  // The forecast: median line (dashed) with its typical p25–p75 band, for ts past
-  // now. Gaps break where the baseline has no cell for that day-and-hour.
-  for (const seg of splitSegments(predicted, predictedStepSeconds * GAP_FACTOR)) {
+  // The "typical for this day & time" overlay: one continuous series across the
+  // window, drawn first so the actual history sits on top of it. The p25–p75 band
+  // is grey context throughout; the p50 median switches style at `now` — faint grey
+  // behind the recorded past, the bolder forecast style ahead. The two median
+  // halves share the point at `now`, so the line stays unbroken across the divider.
+  // Gaps break the line where a cell lacks support rather than bridging them.
+  const path = (pts) => pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.ts)} ${y(p.avg)}`).join(" ");
+  for (const seg of splitSegments(typical, typicalStepSeconds * GAP_FACTOR)) {
     if (seg.length > 1) {
       const top = seg.map((p) => `${x(p.ts)},${y(p.max)}`);
       const bottom = seg.slice().reverse().map((p) => `${x(p.ts)},${y(p.min)}`);
-      content.append(el("polygon", { points: [...top, ...bottom].join(" "), class: "chart-predicted-band" }));
-      const line = seg.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.ts)} ${y(p.avg)}`).join(" ");
-      content.append(el("path", { d: line, class: "chart-predicted-line", fill: "none" }));
-    } else if (seg.length === 1) {
+      content.append(el("polygon", { points: [...top, ...bottom].join(" "), class: "chart-typical-band" }));
+    }
+    const past = nowTs == null ? seg : seg.filter((p) => p.ts <= nowTs);
+    const ahead = nowTs == null ? [] : seg.filter((p) => p.ts >= nowTs);
+    if (past.length > 1) {
+      content.append(el("path", { d: path(past), class: "chart-typical-median", fill: "none" }));
+    }
+    if (ahead.length > 1) {
+      content.append(el("path", { d: path(ahead), class: "chart-predicted-line", fill: "none" }));
+    } else if (seg.length === 1 && ahead.length === 1) {
       content.append(el("circle", { cx: x(seg[0].ts), cy: y(seg[0].avg), r: 2, class: "chart-predicted-dot" }));
     }
   }
@@ -216,8 +217,11 @@ export function renderChart(spec) {
     content.append(nowLabel);
   }
 
+  // Past samples snap to the recorded actual line; ahead of now the typical is all
+  // there is, so those points are the "(typical)" snap targets.
+  const ahead = nowTs == null ? [] : typical.filter((p) => p.ts >= nowTs);
   const plot = { left: PAD.left, top: PAD.top, w: plotW, h: plotH };
-  const controller = attachCrosshair(svg, { actual, predicted, x, y, plot, t0, tSpan, pointFormat });
+  const controller = attachCrosshair(svg, { actual, predicted: ahead, x, y, plot, t0, tSpan, pointFormat });
 
   // Venue-event markers: a vertical tick at each event's start time with its
   // category emoji at the top. Drawn in their own layer *above* the gesture

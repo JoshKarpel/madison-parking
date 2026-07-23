@@ -5,9 +5,10 @@
 // The chart is a free window on time, not a fixed range. The 6h/Day/Week/Month
 // buttons are shortcuts that jump the window to a "last N" span; from there you
 // drag to pan through time (past and future) and pinch or wheel to zoom, and the
-// bucket (raw / hourly / daily) and label format follow the current span. Where
-// the window reaches past "now", the baseline supplies a forecast: the
-// (day, hour) median as a dashed line with its typical p25–p75 band.
+// bucket (raw / hourly / daily) and label format follow the current span. The
+// baseline "typical for this (day, hour)" overlay (median + p25–p75 band) runs as
+// one continuous line across the window: faint context behind the recorded past,
+// switching at "now" into the bolder forecast ahead.
 //
 // Built as a factory so it stays decoupled from app.js's mutable state: the
 // caller injects the Worker URL and getters for the (async-filled) history db
@@ -85,76 +86,41 @@ function scaleForSpan(span) {
   };
 }
 
-// The typical p25–p75 range and median for each point's (day, hour), from the
-// garage's stats cells, aligned to the series x. Empty when there's no baseline.
+// The "typical for this (day, hour)" overlay, from the garage's stats cells, as a
+// single continuous series across the *whole* window — past and future alike. It's
+// the baseline p50 median with its p25–p75 range, one point per hour (the cells'
+// own resolution), thinned to keep the count bounded on a very wide window.
 //
-// A cell is per-hour, so many consecutive samples (a day of raw 5-min points)
-// share one cell's constant percentiles. Emitting one baseline point apiece
-// would make the band a piecewise-constant staircase — rectangular blocks with
-// vertical steps at each hour boundary. Instead, collapse each contiguous
-// same-cell run to a single point at the run's midpoint, so the band and median
-// connect hour to hour with sloped lines. (Hourly buckets are already one cell
-// per point, so their runs are length 1 and pass through unchanged.)
-function baselineSeries(points, cells) {
-  if (!cells) return [];
-  const out = [];
-  let run = null;
-  const flush = () => {
-    if (!run) return;
-    const { cell, tsStart, tsEnd } = run;
-    out.push({ ts: (tsStart + tsEnd) / 2, p25: cell.p25, p50: cell.p50, p75: cell.p75 });
-    run = null;
-  };
-  for (const p of points) {
-    const d = at(p.ts);
-    const key = cellKey(d.getDay(), d.getHours());
-    const cell = cells[key];
-    if (!cell || cell.n < MIN_CELL_OBSERVATIONS) {
-      flush();
-      continue;
-    }
-    if (run && run.key === key) {
-      run.tsEnd = p.ts;
-    } else {
-      flush();
-      run = { key, cell, tsStart: p.ts, tsEnd: p.ts };
-    }
-  }
-  flush();
-  return out;
-}
+// Points sit on hour boundaries plus an extra anchor exactly at `now`, so the
+// chart can switch the median's style at that boundary (faint context behind the
+// recorded past, bolder forecast ahead) with the two halves meeting at the shared
+// anchor rather than leaving a gap. A cell with no support emits no point, so the
+// chart draws honest breaks where the baseline can't speak instead of bridging.
+const TYPICAL_STEP = 3600;
+const MAX_TYPICAL_POINTS = 800;
 
-// The forecast for the future portion of the window: the baseline (day, hour)
-// median with its typical p25–p75 range, one point per hour (the baseline's own
-// resolution), thinned to keep the count bounded on a very wide window. Missing
-// cells leave gaps, which the chart draws as breaks rather than bridging.
-const PREDICT_STEP = 3600;
-const MAX_PREDICT_POINTS = 800;
-
-function predictSeries(startTs, endTs, cells) {
-  if (!cells) return { points: [], step: PREDICT_STEP };
-  const from = Math.max(startTs, nowSec());
-  if (endTs <= from) return { points: [], step: PREDICT_STEP };
-  let step = PREDICT_STEP;
-  const span = endTs - from;
-  if (span / step > MAX_PREDICT_POINTS) {
-    step = Math.ceil(span / MAX_PREDICT_POINTS / PREDICT_STEP) * PREDICT_STEP;
+function typicalSeries(startTs, endTs, cells) {
+  if (!cells || endTs <= startTs) return { points: [], step: TYPICAL_STEP };
+  let step = TYPICAL_STEP;
+  const span = endTs - startTs;
+  if (span / step > MAX_TYPICAL_POINTS) {
+    step = Math.ceil(span / MAX_TYPICAL_POINTS / TYPICAL_STEP) * TYPICAL_STEP;
   }
+  const now = nowSec();
+  const stamps = [];
+  for (let t = Math.ceil(startTs / step) * step; t <= endTs; t += step) stamps.push(t);
+  if (now >= startTs && now <= endTs) stamps.push(now);
+  stamps.sort((a, b) => a - b);
   const points = [];
-  const emit = (t) => {
+  let prev = null;
+  for (const t of stamps) {
+    if (t === prev) continue; // the `now` anchor may coincide with a step boundary
+    prev = t;
     const d = at(t);
     const cell = cells[cellKey(d.getDay(), d.getHours())];
     if (cell && cell.n >= MIN_CELL_OBSERVATIONS) {
       points.push({ ts: t, avg: cell.p50, min: cell.p25, max: cell.p75 });
     }
-  };
-  // Anchor a point at `from` (the boundary between actual and forecast) so the
-  // dashed line connects to the live data instead of starting a whole hour late,
-  // then continue on the hour boundaries past it.
-  emit(from);
-  const firstBoundary = Math.ceil(from / PREDICT_STEP) * PREDICT_STEP;
-  for (let t = firstBoundary === from ? from + step : firstBoundary; t <= endTs; t += step) {
-    emit(t);
   }
   return { points, step };
 }
@@ -169,7 +135,7 @@ export function createGraphView({ apiUrl, getHistoryDb, getCells, getEvents }) {
   let els = null;
   let garage = null;
   let view = null; // { startTs, endTs } — the visible window
-  let loaded = null; // { actual, predicted, predictedStep, scale }
+  let loaded = null; // { actual, typical, typicalStep, scale }
   let renderedView = null; // the window `loaded` was rendered against
   let controller = null; // the current chart's { svg, content, plot, viewW, ... }
   let activePreset = null;
@@ -219,15 +185,14 @@ export function createGraphView({ apiUrl, getHistoryDb, getCells, getEvents }) {
       actual = [];
     }
     if (my !== loadToken || garage == null) return;
-    const { points: predicted, step: predictedStep } = predictSeries(from, to, getCells(garage));
-    loaded = { actual, predicted, predictedStep, scale };
+    const { points: typical, step: typicalStep } = typicalSeries(from, to, getCells(garage));
+    loaded = { actual, typical, typicalStep, scale };
     renderView();
   }
 
-  function legendText(baseline, predicted) {
+  function legendText(typical) {
     const bits = [];
-    if (predicted.length) bits.push("dashed = typical ahead");
-    if (baseline && baseline.length) bits.push("shaded = typical range");
+    if (typical.length) bits.push("dashed line & shaded band = typical for this time");
     bits.push("drag · pinch to explore");
     return bits.join(" · ");
   }
@@ -250,26 +215,29 @@ export function createGraphView({ apiUrl, getHistoryDb, getCells, getEvents }) {
 
   function renderView() {
     if (!els || !loaded || !view) return;
-    const { actual, predicted, predictedStep, scale } = loaded;
-    const baseline = scale.useBaseline ? baselineSeries(actual, getCells(garage)) : null;
+    const { actual, typical, typicalStep, scale } = loaded;
+    const now = nowSec();
+    // At the wide (daily) zoom the past typical band is noise over months of real
+    // data, so there we show the overlay only ahead of now; the finer scales run it
+    // continuously across the window. Either way it's one series, just clipped.
+    const shown = scale.useBaseline ? typical : typical.filter((p) => p.ts >= now);
     controller = renderChart({
       actual,
-      predicted,
-      baseline,
+      typical: shown,
       events: eventMarkers(),
       domain: { t0: view.startTs, t1: view.endTs },
-      nowTs: nowSec(),
+      nowTs: now,
       band: scale.band,
       stepSeconds: scale.step,
-      predictedStepSeconds: predictedStep,
+      typicalStepSeconds: typicalStep,
       xFormat: scale.xFormat,
       pointFormat: scale.pointFormat,
     });
     renderedView = { startTs: view.startTs, endTs: view.endTs };
     els.body.replaceChildren(controller.svg);
     wireGestures(controller.svg);
-    els.status.textContent = actual.length || predicted.length ? "" : "No history for this range yet";
-    els.legend.textContent = legendText(baseline, predicted);
+    els.status.textContent = actual.length || shown.length ? "" : "No history for this range yet";
+    els.legend.textContent = legendText(shown);
     updatePresetButtons();
   }
 

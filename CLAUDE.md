@@ -233,8 +233,9 @@ fullness coloring, and the slot-comparison tidbit. Full detail in
 - **Graphs** (`site/chart.js` renders, `site/graph.js` drives): hand-rolled SVG
   over a **free time window** the user pans and zooms, not a fixed range.
   `renderChart(spec)` draws an explicit `domain: {t0, t1}` (so it can show empty
-  space or the future), takes `actual` + `predicted` series plus the "typical"
-  p25–p75 baseline overlay, marks `nowTs` with a divider, clips the data layers
+  space or the future), takes the `actual` history line plus one `typical` series
+  (the p50 median with its p25–p75 band) spanning the whole window, marks `nowTs`
+  with a divider, clips the data layers
   to the plot, and returns a controller (`svg`, `content`, `plot`, `tsAtClientX`,
   `crosshairAtClientX`, `hideCrosshair`) that `graph.js` drives. The y-axis is
   anchored at 0 (top padded to fit the data), so proximity to empty stays
@@ -250,11 +251,16 @@ fullness coloring, and the slot-comparison tidbit. Full detail in
   - **Presets** are "last N" windows (`6h`/`Day`/`Week`/`Month`), each showing
     `past` back from now plus a small forecast peek ahead; a zoom clears the
     active preset.
-  - **Forecast** (`predictSeries`): where the window reaches past `now`, the
-    baseline supplies the *typical* count for each future `(day, hour)` — the p50
-    median as a dashed line with its p25–p75 band, one point per hour (thinned on
-    a wide window), gaps where a cell lacks support. It's labeled "typical", not
-    a claim about the specific future.
+  - **Typical overlay / forecast** (`typicalSeries`): one continuous series across
+    the *whole* window supplies the baseline *typical* count for each `(day, hour)`
+    — the p50 median with its p25–p75 band, one point per hour (thinned on a wide
+    window) plus an anchor exactly at `now`, gaps where a cell lacks support. It's
+    drawn as a single line whose style switches at `now`: faint grey context behind
+    the recorded past, the bolder dashed forecast ahead (the two halves share the
+    `now` anchor, so the line never breaks at the divider). Ahead of `now` it's
+    labeled "typical", not a claim about the specific future. The daily zoom
+    (`scaleForSpan`'s `useBaseline: false`) clips the overlay to `now` onward, since
+    the past band is noise over months of real data.
   - **Crosshair**: a transparent capture surface over the plot; a tap or hover
     snaps to the nearest actual-or-forecast sample and floats a readout of its
     time (`pointFormat`) and count (future points tagged "(typical)"). A mouse

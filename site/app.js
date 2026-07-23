@@ -327,12 +327,23 @@ function makeCard(entry, { minimized, index, total }) {
   if (entry.id === expandedId) card.classList.add("expanded");
   card.dataset.id = entry.id;
 
-  // The summary holds the count and every corner control, and is the controls'
-  // positioning context. The inline graph mounts as the card's next child, below
-  // the summary, so expanding the card doesn't move the controls (they stay
-  // anchored to the summary, not the taller card).
+  // The summary is a three-track grid: a left rail (reorder arrows + minimize), the
+  // center content column (count and every text line), and a right rail (map + chart
+  // toggle). The rails are real grid columns, not overlays, so the content column is
+  // walled off and can never overlap a control (which floating corner buttons did).
+  // The inline graph mounts as the card's next child, below the summary, so expanding
+  // the card leaves the summary (and its controls) exactly where it was collapsed.
   const summary = document.createElement("div");
   summary.className = "card-summary";
+
+  const content = document.createElement("div");
+  content.className = "card-content";
+
+  const leftRail = document.createElement("div");
+  leftRail.className = "card-rail card-rail-left";
+
+  const rightRail = document.createElement("div");
+  rightRail.className = "card-rail card-rail-right";
 
   const minimize = document.createElement("button");
   minimize.className = "minimize";
@@ -353,16 +364,16 @@ function makeCard(entry, { minimized, index, total }) {
   label.className = "count-label";
   label.textContent = entry.count == null ? "unavailable" : "spots";
 
-  summary.append(minimize, name);
+  content.append(name);
 
   if (entry.note) {
     const note = document.createElement("div");
     note.className = "note";
     note.textContent = entry.note;
-    summary.append(note);
+    content.append(note);
   }
 
-  summary.append(count, label);
+  content.append(count, label);
 
   // Estimated fullness against the garage's high-water capacity estimate — the
   // headline "could I park here?" figure. Labeled an estimate; absent (like the
@@ -374,7 +385,7 @@ function makeCard(entry, { minimized, index, total }) {
     const el = document.createElement("div");
     el.className = "availability";
     el.textContent = `≈${free}% free (est.)`;
-    summary.append(el);
+    content.append(el);
   }
 
   // Short-term direction from recently-synced samples: filling up, emptying out,
@@ -384,7 +395,7 @@ function makeCard(entry, { minimized, index, total }) {
     const el = document.createElement("div");
     el.className = `trend trend-${trend.direction}`;
     el.textContent = TREND_TEXT[trend.direction];
-    summary.append(el);
+    content.append(el);
   }
 
   // How this count compares to the garage's own history for this day and hour,
@@ -394,7 +405,7 @@ function makeCard(entry, { minimized, index, total }) {
     const el = document.createElement("div");
     el.className = "comparison";
     el.textContent = comparison;
-    summary.append(el);
+    content.append(el);
   }
 
   // A forward-looking heads-up ("usually busiest around 6pm"), when the baseline
@@ -404,7 +415,7 @@ function makeCard(entry, { minimized, index, total }) {
     const el = document.createElement("div");
     el.className = "forecast";
     el.textContent = forecast;
-    summary.append(el);
+    content.append(el);
   }
 
   // Nearby events (via Ticketmaster), each linked to its ticket page: a heads-up
@@ -416,26 +427,22 @@ function makeCard(entry, { minimized, index, total }) {
     horizonSeconds: EVENT_HEADS_UP_SECONDS,
     limit: MAX_CARD_EVENTS,
   })) {
-    summary.append(makeEventBadge(event, now));
+    content.append(makeEventBadge(event, now));
   }
 
-  // Reorder with up/down arrows in the left corners, disabled at the ends of
-  // the active list (only meaningful when there's more than one card).
-  if (total > 1) {
-    summary.append(
-      makeMove(entry, -1, "▲", "up", index === 0),
-      makeMove(entry, 1, "▼", "down", index === total - 1)
-    );
-  }
+  // Left rail top-to-bottom: reorder-up, minimize (vertically centered via its
+  // auto margins), reorder-down. The arrows exist only when reordering is
+  // meaningful (more than one card) and are disabled at the ends of the list.
+  if (total > 1) leftRail.append(makeMove(entry, -1, "▲", "up", index === 0));
+  leftRail.append(minimize);
+  if (total > 1) leftRail.append(makeMove(entry, 1, "▼", "down", index === total - 1));
 
-  // Garages with a known address get a Google Maps link in the top-right
-  // corner; unmapped ramps have no known location, so no link.
-  if (entry.address) summary.append(makeMapLink(entry));
+  // Right rail: a Google Maps link on top (only for garages with a known
+  // address), the chart toggle pinned to the bottom.
+  if (entry.address) rightRail.append(makeMapLink(entry));
+  rightRail.append(makeGraphToggle(entry));
 
-  // The chart toggle sits in the bottom-right corner; tapping it opens/closes
-  // the trend view inline in place.
-  summary.append(makeGraphToggle(entry));
-
+  summary.append(leftRail, content, rightRail);
   card.append(summary);
 
   // When expanded, the trend view mounts into the card below the summary.

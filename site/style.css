@@ -675,14 +675,29 @@ h2 {
   -webkit-user-select: none;
 }
 
-/* The summary carries the card's padding and is the positioning context for the
-   corner controls, so they anchor here rather than to the whole card. When a
-   card expands, the graph mounts as the card's next child below this box, so the
-   summary (and its controls) keep the exact size and position they had collapsed. */
+/* A three-track grid: a fixed-width left rail (reorder + minimize), the flexible
+   center content column, and a fixed-width right rail (map + chart toggle). The
+   rails are real columns, so the content can never overlap a control. When a card
+   expands, the graph mounts as the card's next child below this box, so the summary
+   (and its controls) keep the exact size and position they had collapsed. */
 .card-summary {
-  position: relative;
   width: 100%;
   padding: 1rem;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: stretch;
+}
+
+.card-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Each rail stacks its controls in a fixed-width column spanning the summary's
+   full height, so the content column between them is bounded on both sides. */
+.card-rail {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -692,7 +707,6 @@ h2 {
   font-weight: 600;
   font-size: 1.1rem;
   color: var(--muted);
-  padding: 0 2.5rem;
 }
 
 /* Big, thumb-glanceable numbers on the full cards. */
@@ -716,7 +730,6 @@ h2 {
   font-size: 0.8rem;
   color: var(--muted);
   font-style: italic;
-  padding: 0 2.5rem;
 }
 
 /* Minimized: a compact one-line row (name + count), the whole row a restore
@@ -805,7 +818,6 @@ h2 {
   margin-top: 0.15rem;
   font-size: 0.75rem;
   color: var(--muted);
-  padding: 0 2.5rem;
 }
 
 /* Short-term direction. Filling up (losing spots) reads as a warning colour;
@@ -831,7 +843,6 @@ h2 {
   font-size: 0.72rem;
   color: var(--muted);
   font-style: italic;
-  padding: 0 2.5rem;
 }
 
 /* Upcoming nearby event, linked to its ticket page. A brighter accent than the
@@ -844,7 +855,7 @@ h2 {
   font-weight: 600;
   color: var(--blue);
   text-decoration: none;
-  padding: 0 2.5rem;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -854,31 +865,10 @@ h2 {
 }
 
 
-/* Left-centered, between the ▲/▼ reorder arrows, so minimize sits on the same
-   side as the ＋ that restores a minimized row. */
-.minimize {
-  position: absolute;
-  top: 50%;
-  left: 0.5rem;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 1.5rem;
-  line-height: 1;
-  padding: 0.25rem;
-  cursor: pointer;
-  min-width: 44px;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
+.minimize,
 .move,
 .maplink,
 .graph-toggle {
-  position: absolute;
   background: none;
   border: none;
   line-height: 1;
@@ -891,18 +881,18 @@ h2 {
   justify-content: center;
 }
 
+/* Minimize sits vertically centered in the left rail (auto margins absorb the
+   free space above and below equally), so the reorder arrows pin to the ends. It
+   sits on the same side as the ＋ that restores a minimized row. */
+.minimize {
+  margin-block: auto;
+  color: var(--muted);
+  font-size: 1.5rem;
+}
+
 .move {
-  left: 0.5rem;
   color: var(--muted);
   font-size: 0.9rem;
-}
-
-.move-up {
-  top: 0.5rem;
-}
-
-.move-down {
-  bottom: 0.5rem;
 }
 
 .move:disabled {
@@ -911,15 +901,14 @@ h2 {
 }
 
 .maplink {
-  right: 0.5rem;
-  top: 0.5rem;
   font-size: 1.25rem;
   text-decoration: none;
 }
 
+/* Pinned to the bottom of the right rail; the map link (when present) sits at the
+   top, and this auto top-margin pushes the toggle down regardless. */
 .graph-toggle {
-  right: 0.5rem;
-  bottom: 0.5rem;
+  margin-top: auto;
   font-size: 1.25rem;
 }
 
@@ -1302,13 +1291,16 @@ body.sky-peek #sky-peek-exit {
   opacity: 0.18;
 }
 
-/* The "typical" (p25–p75) range and median for each point's day-and-hour,
-   behind the actual line. Grey so it reads as context, not data. */
+/* The "typical" (p25–p75) range for each point's day-and-hour, running across the
+   whole window behind both the actual line and the forecast. Grey so it reads as
+   context, not data. */
 .chart-typical-band {
   fill: var(--muted);
   opacity: 0.16;
 }
 
+/* The typical median in the recorded past: faint grey context behind the actual
+   line (ahead of now it becomes .chart-predicted-line). */
 .chart-typical-median {
   stroke: var(--muted);
   stroke-width: 1;
@@ -1344,13 +1336,9 @@ body.sky-peek #sky-peek-exit {
   text-anchor: middle;
 }
 
-/* The forecast past "now": the baseline (day, hour) median, dashed to read as a
-   prediction, with its typical p25–p75 range shaded behind it. */
-.chart-predicted-band {
-  fill: var(--muted);
-  opacity: 0.16;
-}
-
+/* The typical median ahead of "now": the same grey p25–p75 band continues behind
+   it (drawn as .chart-typical-band across the whole window), but the median turns
+   blue and dashed here to read as the forecast rather than past context. */
 .chart-predicted-line {
   stroke: var(--blue);
   stroke-width: 2;
