@@ -13,8 +13,10 @@ parking garages, for two users on Android. Three pieces, deployed together:
   CORS, edge-caches 60s, returns 502 on upstream failure) and, on cron triggers,
   records history into a D1 database and serves it back (see History below). It
   also proxies upcoming venue events from the Ticketmaster Discovery API
-  (`/events`), **live and never stored** (their terms forbid retention), so the
-  client can correlate a crowd with parking demand (see Events below). It also
+  (`/events`), **live and never stored** (their terms forbid retention), merged
+  with a handful of curated static events (a recurring farmers' market and the
+  like) that are too irregular to scrape, so the client can correlate a crowd
+  with parking demand (see Events below). It also
   emits one aggregate Analytics Engine data point per request (endpoint + coarse
   country + status, no per-user identifier) for a rough usage signal; see
   `worker/README.md`.
@@ -54,6 +56,17 @@ data is never persisted anywhere.
   garage-agnostic: it ships each venue's coordinates and the client maps events
   to nearby garages (`site/events.js`), so garage identity stays solely in
   `site/garages.js`. Events link back to their Ticketmaster page (attribution).
+  Alongside the proxy, `/events` merges **curated static events** (`STATIC_EVENTS`
+  in `worker/src/index.js`): gatherings absent from Ticketmaster and too irregular
+  to scrape (a recurring farmers' market, one-off festivals). These are our own
+  facts, not Event Content, so no retention constraint applies, but they're still
+  generated live per request (`expandStaticEvents`), never stored. Each descriptor
+  is a `weekly` seasonal recurrence or a `one-off`, expanded to the same row shape
+  the proxy emits (namespaced ids, Central wall-clock start via `wallTimeToEpochSec`,
+  optional `ends_at` for a known end time; the client honors `ends_at` for the
+  card's "ongoing" window, else a grace window). A weekly season pins a verified
+  year and wants a yearly bump. New segment kinds need an emoji in `SEGMENT_EMOJI`
+  (`site/events.js`).
 - **There is no *real* total-capacity figure anywhere; capacity is estimated,
   and any fullness number is labeled an estimate.** The feed gives vacancy
   *counts only*. We estimate each garage's capacity as a high-water mark (the

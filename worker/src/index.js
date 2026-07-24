@@ -73,6 +73,35 @@ const EVENT_PAST_GRACE_SECONDS = 3 * 3600;
 // "reasonable periods".
 const EVENTS_CACHE_TTL_SECONDS = 60 * 60;
 
+// --- Static events (curated, not scraped) ------------------------------------
+// Some recurring or one-off downtown gatherings aren't in Ticketmaster and are
+// too irregular to scrape, so we describe them here and expand them into the
+// same slim rows the Discovery proxy produces (namespaced ids, so they never
+// collide with Ticketmaster's). These are our own facts, not Ticketmaster Event
+// Content, so no retention constraint applies; we still emit them live per
+// request rather than storing them. Each descriptor is either a `weekly`
+// seasonal recurrence or a `one-off`, and carries Central wall-clock start (and
+// optional end) times expanded per occurrence via wallTimeToEpochSec.
+const STATIC_EVENTS = [
+  {
+    kind: "weekly",
+    id: "dcfm-saturday-square",
+    title: "Dane County Farmers' Market",
+    venue: "Capitol Square",
+    lat: 43.0747,
+    lon: -89.3844,
+    url: "https://dcfm.org/markets/saturday-on-the-square",
+    classification: "Market",
+    weekday: 6, // Saturday (0=Sun..6=Sat)
+    startTime: [6, 15],
+    endTime: [13, 45],
+    // Verified 2026 season (dcfm.org). Season boundaries drift year to year, so
+    // this pins the confirmed dates and wants a yearly bump; [year, month(0-idx), day].
+    seasonStart: [2026, 3, 11], // April 11, 2026
+    seasonEnd: [2026, 10, 14], // November 14, 2026
+  },
+];
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -201,19 +230,25 @@ async function handleEvents(env) {
   const since = anchor - EVENT_PAST_GRACE_SECONDS;
   const until = anchor + EVENT_HORIZON_SECONDS;
 
+  // Our own curated events, expanded to concrete occurrences in the same window
+  // and row shape. Always available (no upstream), so they ride along whether or
+  // not the Ticketmaster key is configured.
+  const staticRows = expandStaticEvents(STATIC_EVENTS, since, until);
+
   if (!env.TICKETMASTER_API_KEY) {
-    console.log("events: no TICKETMASTER_API_KEY configured, returning none");
-    return json({ events: [] }, 200, {
+    console.log("events: no TICKETMASTER_API_KEY configured, returning static events only");
+    return json({ events: staticRows }, 200, {
       "Cache-Control": `public, max-age=${EVENTS_CACHE_TTL_SECONDS}`,
     });
   }
 
-  let events;
+  let ticketmaster;
   try {
-    events = await fetchEvents(env.TICKETMASTER_API_KEY, since, until);
+    ticketmaster = await fetchEvents(env.TICKETMASTER_API_KEY, since, until);
   } catch (err) {
     return json({ error: "events upstream failed", detail: String(err) }, 502);
   }
+  const events = [...ticketmaster, ...staticRows].sort((a, b) => a.starts_at - b.starts_at);
   return json({ events }, 200, {
     "Cache-Control": `public, max-age=${EVENTS_CACHE_TTL_SECONDS}`,
   });
@@ -296,11 +331,95 @@ function parseEvents(body, sinceSec, untilSec) {
       lat,
       lon,
       starts_at: startsAt,
+      ends_at: null, // Ticketmaster gives no reliable end time; the client uses a grace window
       url: typeof event.url === "string" ? event.url : null,
       classification: primarySegment(event),
     });
   }
   return rows;
+}
+
+// --- Static event expansion --------------------------------------------------
+
+// Expand curated descriptors into slim rows within [sinceSec, untilSec], the
+// same shape parseEvents produces. Pure: descriptors + window in, rows out.
+function expandStaticEvents(descriptors, sinceSec, untilSec, tz = FEED_TZ) {
+  const rows = [];
+  for (const descriptor of descriptors) {
+    for (const date of occurrenceDates(descriptor, sinceSec, untilSec, tz)) {
+      const row = staticEventRow(descriptor, date, tz);
+      if (row.starts_at < sinceSec || row.starts_at > untilSec) continue;
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+// The calendar dates [year, month(0-idx), day] a descriptor occurs on, before
+// the window filter. A one-off is its single date; a weekly recurrence is every
+// matching weekday within its season that the window could reach.
+function occurrenceDates(descriptor, sinceSec, untilSec, tz) {
+  if (descriptor.kind === "one-off") return [descriptor.date];
+  if (descriptor.kind === "weekly") return weeklyOccurrenceDates(descriptor, sinceSec, untilSec, tz);
+  throw new Error(`unknown static event kind: ${descriptor.kind}`);
+}
+
+function weeklyOccurrenceDates(descriptor, sinceSec, untilSec, tz) {
+  const dates = [];
+  const start = centralDateParts(sinceSec, tz);
+  // Walk Central calendar dates one day at a time. Anchor the cursor mid-day
+  // (18:00 UTC ≈ noon Central) so stepping by 86400 never lands on a DST
+  // midnight edge that would double or skip a date.
+  let cursor = Math.floor(Date.UTC(start.year, start.month, start.day, 18) / 1000);
+  const guard = Math.ceil((untilSec - sinceSec) / 86400) + 3;
+  for (let i = 0; i < guard; i++) {
+    const date = centralDateParts(cursor, tz);
+    if (date.dow === descriptor.weekday && withinSeason(date, descriptor.seasonStart, descriptor.seasonEnd)) {
+      dates.push([date.year, date.month, date.day]);
+    }
+    cursor += 86400;
+  }
+  return dates;
+}
+
+const dateKey = (year, month, day) => year * 10000 + month * 100 + day;
+
+function withinSeason(date, seasonStart, seasonEnd) {
+  const key = dateKey(date.year, date.month, date.day);
+  return key >= dateKey(...seasonStart) && key <= dateKey(...seasonEnd);
+}
+
+// The Central calendar date { year, month(0-idx), day, dow } of a UTC instant.
+function centralDateParts(utcSec, tz) {
+  const local = new Date((utcSec + zoneOffsetSec(utcSec, tz)) * 1000);
+  return {
+    year: local.getUTCFullYear(),
+    month: local.getUTCMonth(),
+    day: local.getUTCDate(),
+    dow: local.getUTCDay(),
+  };
+}
+
+function staticEventRow(descriptor, [year, month, day], tz) {
+  const [startHour, startMinute] = descriptor.startTime;
+  const startsAt = wallTimeToEpochSec(year, month, day, startHour, startMinute, tz);
+  let endsAt = null;
+  if (descriptor.endTime) {
+    const [endHour, endMinute] = descriptor.endTime;
+    endsAt = wallTimeToEpochSec(year, month, day, endHour, endMinute, tz);
+  }
+  const stamp = `${year}${String(month + 1).padStart(2, "0")}${String(day).padStart(2, "0")}`;
+  return {
+    id: `${descriptor.id}-${stamp}`,
+    title: descriptor.title,
+    venue: descriptor.venue,
+    lat: descriptor.lat,
+    lon: descriptor.lon,
+    starts_at: startsAt,
+    ends_at: endsAt,
+    url: descriptor.url ?? null,
+    classification: descriptor.classification ?? null,
+  };
 }
 
 // --- Collection --------------------------------------------------------------
@@ -767,6 +886,7 @@ export {
   computeCells,
   estimateCapacity,
   parseEvents,
+  expandStaticEvents,
   cronAction,
   retentionCutoffSec,
   safeEqual,

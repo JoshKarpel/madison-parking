@@ -7,6 +7,7 @@ import {
   computeCells,
   estimateCapacity,
   parseEvents,
+  expandStaticEvents,
   cronAction,
   retentionCutoffSec,
   safeEqual,
@@ -226,6 +227,7 @@ test("parseEvents pulls the fields we need from a well-formed event", () => {
   eq(row.lon, -89.3887);
   eq(row.url, "https://www.ticketmaster.com/evt-1");
   eq(row.classification, "Music");
+  eq(row.ends_at, null); // Ticketmaster gives no reliable end time
 });
 
 test("parseEvents drops a cancelled event", () => {
@@ -254,6 +256,97 @@ test("parseEvents defaults a missing url and classification to null", () => {
 test("parseEvents returns nothing for a response with no events array", () => {
   eq(parseEvents({}, EV_SINCE, EV_UNTIL), []);
   eq(parseEvents({ _embedded: {} }, EV_SINCE, EV_UNTIL), []);
+});
+
+// --- static event expansion --------------------------------------------------
+
+// A weekly seasonal descriptor shaped like the real farmers' market: Saturdays,
+// 6:15am–1:45pm Central, mid-April through mid-November 2026.
+const MARKET = {
+  kind: "weekly",
+  id: "market",
+  title: "Farmers' Market",
+  venue: "Capitol Square",
+  lat: 43.0747,
+  lon: -89.3844,
+  url: "https://example.org/market",
+  classification: "Market",
+  weekday: 6, // Saturday (0=Sun..6=Sat)
+  startTime: [6, 15],
+  endTime: [13, 45],
+  seasonStart: [2026, 3, 11], // April 11, 2026
+  seasonEnd: [2026, 10, 14], // November 14, 2026
+};
+
+const win = (fromIso, toIso) => [epoch(fromIso), epoch(toIso)];
+
+test("expandStaticEvents emits a weekly recurrence's occurrences within the window", () => {
+  const rows = expandStaticEvents([MARKET], ...win("2026-07-13T00:00:00Z", "2026-08-02T00:00:00Z"));
+  eq(rows.map((r) => r.id), ["market-20260718", "market-20260725", "market-20260801"]);
+});
+
+test("expandStaticEvents converts each occurrence's Central wall-clock time (summer, CDT)", () => {
+  const [row, ...rest] = expandStaticEvents([MARKET], ...win("2026-07-18T00:00:00Z", "2026-07-19T00:00:00Z"));
+  eq(rest, []);
+  eq(row.starts_at, epoch("2026-07-18T11:15:00Z")); // 6:15am CDT (UTC-5)
+  eq(row.ends_at, epoch("2026-07-18T18:45:00Z")); // 1:45pm CDT
+  eq(row.title, "Farmers' Market");
+  eq(row.venue, "Capitol Square");
+  eq(row.lat, 43.0747);
+  eq(row.classification, "Market");
+  eq(row.url, "https://example.org/market");
+});
+
+test("expandStaticEvents follows the fall-back offset shift within one season", () => {
+  // Oct 31 is still CDT (UTC-5); Nov 1 falls back, so Nov 7 and 14 are CST (UTC-6).
+  const rows = expandStaticEvents([MARKET], ...win("2026-10-30T00:00:00Z", "2026-11-16T00:00:00Z"));
+  eq(
+    rows.map((r) => [r.id, r.starts_at]),
+    [
+      ["market-20261031", epoch("2026-10-31T11:15:00Z")],
+      ["market-20261107", epoch("2026-11-07T12:15:00Z")],
+      ["market-20261114", epoch("2026-11-14T12:15:00Z")],
+    ]
+  );
+});
+
+test("expandStaticEvents stops at the season's end date", () => {
+  // The Nov 14 close, then nothing after (no Nov 21/28) even though the window covers them.
+  const rows = expandStaticEvents([MARKET], ...win("2026-11-14T00:00:00Z", "2026-12-15T00:00:00Z"));
+  eq(rows.map((r) => r.id), ["market-20261114"]);
+});
+
+test("expandStaticEvents drops an occurrence whose start falls outside the window", () => {
+  // The window closes at 6:00am, before opening Saturday's 6:15am (11:15Z) start.
+  eq(expandStaticEvents([MARKET], ...win("2026-04-11T00:00:00Z", "2026-04-11T06:00:00Z")), []);
+});
+
+test("expandStaticEvents places a one-off at its single Central datetime, no end", () => {
+  const parade = {
+    kind: "one-off",
+    id: "parade",
+    title: "Winter Parade",
+    venue: "State Street",
+    lat: 43.0743,
+    lon: -89.3861,
+    startTime: [17, 30],
+    date: [2026, 1, 14], // February 14, 2026 (CST, UTC-6)
+  };
+  const [row, ...rest] = expandStaticEvents([parade], ...win("2026-02-01T00:00:00Z", "2026-03-01T00:00:00Z"));
+  eq(rest, []);
+  eq(row.id, "parade-20260214");
+  eq(row.starts_at, epoch("2026-02-14T23:30:00Z")); // 5:30pm CST
+  eq(row.ends_at, null); // no endTime given
+});
+
+test("expandStaticEvents rejects an unknown descriptor kind", () => {
+  let threw = false;
+  try {
+    expandStaticEvents([{ kind: "monthly" }], epoch("2026-01-01T00:00:00Z"), epoch("2026-02-01T00:00:00Z"));
+  } catch {
+    threw = true;
+  }
+  ok(threw, "expected an unknown descriptor kind to throw");
 });
 
 // --- usage metric labels -----------------------------------------------------

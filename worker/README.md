@@ -77,12 +77,13 @@ venues (a concert, a game) from the
 [Ticketmaster Discovery API](https://developer.ticketmaster.com/products-and-docs/apis/discovery-api/v2/).
 
 - `GET /events` returns upcoming events near downtown as slim rows
-  (`{ id, title, venue, lat, lon, starts_at, url, classification }`), sorted by
-  start. `starts_at` is UTC epoch seconds, like `samples.observed_at`. Cached at
-  the edge and in the browser for an hour (`EVENTS_CACHE_TTL_SECONDS`); the
-  request window is floored to the hour so repeat calls reuse the same upstream
-  response. On an upstream error it returns `502`; with no API key configured it
-  returns an empty list (the feature simply shows nothing).
+  (`{ id, title, venue, lat, lon, starts_at, ends_at, url, classification }`),
+  sorted by start. `starts_at` (and `ends_at`, a known end time or `null`) is UTC
+  epoch seconds, like `samples.observed_at`. Cached at the edge and in the browser
+  for an hour (`EVENTS_CACHE_TTL_SECONDS`); the request window is floored to the
+  hour so repeat calls reuse the same upstream response. On a Ticketmaster upstream
+  error it returns `502`; with no API key configured it returns the curated static
+  events only (below).
 
 **Not stored.** Unlike the parking samples (the city's own data, which we
 retain), event data is *proxied live and never persisted*. Ticketmaster's
@@ -95,6 +96,17 @@ its Ticketmaster page.
 The Worker stays garage-agnostic here too: it ships the venue's coordinates and
 lets the client match each event to the garages within walking distance
 (`site/events.js`), so garage identity stays solely in `site/garages.js`.
+
+**Curated static events.** Some downtown gatherings aren't in Ticketmaster and
+are too irregular to scrape (a recurring farmers' market, one-off festivals), so
+they're described in `STATIC_EVENTS` and merged into `/events` in the same row
+shape. Being our own facts rather than Ticketmaster Event Content, they carry no
+retention constraint, but they're still generated live per request
+(`expandStaticEvents`) rather than stored. Each descriptor is a `weekly` seasonal
+recurrence or a `one-off`, expanded to concrete occurrences whose Central
+wall-clock start (and optional end) times pass through `wallTimeToEpochSec` so the
+epochs stay DST-correct. A weekly season pins a verified year and wants a yearly
+bump.
 
 ### Set the API key
 

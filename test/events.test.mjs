@@ -101,6 +101,28 @@ test("cardEventsForGarage only returns a garage's own in-range events", () => {
   );
 });
 
+// A curated event carries an explicit end time; the card shows it until then,
+// past the short ongoing grace a Ticketmaster event (no end time) would use.
+const LONG = [
+  { id: "market", starts_at: NOW - 5 * HOUR, ends_at: NOW + 2 * HOUR, ...ORPHEUM, classification: "Market" },
+  { id: "closed", starts_at: NOW - 6 * HOUR, ends_at: NOW - HOUR, ...ORPHEUM, classification: "Market" },
+];
+
+test("cardEventsForGarage keeps a long event with a known end time still in progress", () => {
+  // Started 5h ago — past the 3h grace — but ends_at is 2h ahead, so it stays.
+  eq(
+    cardEventsForGarage(LONG, "overture", NOW, OPTS, GARAGES).map((e) => e.id),
+    ["market"]
+  );
+});
+
+test("cardEventsForGarage drops an event whose known end time has passed", () => {
+  eq(
+    cardEventsForGarage([LONG[1]], "overture", NOW, OPTS, GARAGES).map((e) => e.id),
+    []
+  );
+});
+
 test("eventsForGarage includes recently-passed events too, sorted by start", () => {
   eq(
     eventsForGarage(EVENTS, "overture", GARAGES).map((e) => e.id),
@@ -114,6 +136,7 @@ test("eventEmoji maps known segments and falls back for the rest", () => {
   eq(eventEmoji("Music"), "🎵");
   eq(eventEmoji("Sports"), "🏟️");
   eq(eventEmoji("Arts & Theatre"), "🎭");
+  eq(eventEmoji("Market"), "🧺");
   eq(eventEmoji("Something New"), "📅");
   eq(eventEmoji(null), "📅");
 });

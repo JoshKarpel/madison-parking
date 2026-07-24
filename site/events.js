@@ -39,10 +39,9 @@ export function garagesForEvent(event, garages = GARAGES, radius = EVENT_RADIUS_
   return ids;
 }
 
-// The events to surface on a garage's card, soonest first: any that are probably
-// still ongoing (started within `ongoingSeconds` ago — what explains a full ramp
-// *now*, since we can't know an event's true end time) plus the soonest upcoming
-// within `horizonSeconds` ahead, capped at `limit` for a short heads-up. Pure.
+// The events to surface on a garage's card, soonest first: any still ongoing
+// (what explains a full ramp *now*) plus the soonest upcoming within
+// `horizonSeconds` ahead, capped at `limit` for a short heads-up. Pure.
 export function cardEventsForGarage(
   events,
   garageId,
@@ -52,8 +51,16 @@ export function cardEventsForGarage(
   radius = EVENT_RADIUS_METERS
 ) {
   return eventsForGarage(events, garageId, garages, radius) // sorted ascending
-    .filter((event) => event.starts_at >= now - ongoingSeconds && event.starts_at <= now + horizonSeconds)
+    .filter((event) => event.starts_at <= now + horizonSeconds && !hasEnded(event, now, ongoingSeconds))
     .slice(0, limit);
+}
+
+// Whether an event has passed and should drop off the card. A curated event with
+// a known end time (`ends_at`) stays until it truly ends; a Ticketmaster event
+// has no reliable end, so it falls back to a grace window after its start.
+function hasEnded(event, now, ongoingSeconds) {
+  if (typeof event.ends_at === "number") return event.ends_at < now;
+  return event.starts_at < now - ongoingSeconds;
 }
 
 // Every event near a garage, upcoming or recently past, soonest first — for the
@@ -78,6 +85,7 @@ const SEGMENT_EMOJI = {
   Sports: "🏟️",
   "Arts & Theatre": "🎭",
   Film: "🎬",
+  Market: "🧺",
   Miscellaneous: "📌",
 };
 

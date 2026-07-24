@@ -72,10 +72,11 @@ const REFRESH_INTERVAL_MS = 60_000;
 // relative threshold to smooth jitter, short enough to reflect "right now".
 const TREND_WINDOW_SECONDS = 30 * 60;
 
-// How a card surfaces nearby venue events: any that are probably still ongoing
-// (started within this grace, matching the Worker's past-grace window so an
-// in-progress show still appears), plus the soonest upcoming within a week, up to
-// MAX_CARD_EVENTS lines — a short heads-up, not a full calendar.
+// How a card surfaces nearby venue events: any still ongoing plus the soonest
+// upcoming within a week, up to MAX_CARD_EVENTS lines — a short heads-up, not a
+// full calendar. An event with a known end time stays until it ends; one without
+// (Ticketmaster gives none) falls back to this grace after its start, matching
+// the Worker's past-grace window so an in-progress show still appears.
 const EVENT_ONGOING_GRACE_SECONDS = 3 * 3600;
 const EVENT_HEADS_UP_SECONDS = 7 * DAY_SECONDS;
 const MAX_CARD_EVENTS = 3;
