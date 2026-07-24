@@ -100,6 +100,23 @@ const STATIC_EVENTS = [
     seasonStart: [2026, 3, 11], // April 11, 2026
     seasonEnd: [2026, 10, 14], // November 14, 2026
   },
+  {
+    kind: "weekly",
+    id: "wco-concerts-on-the-square",
+    title: "Concerts on the Square",
+    venue: "King Street corner, Capitol Square",
+    lat: 43.0742,
+    lon: -89.3837,
+    url: "https://wcoconcerts.org/concerts-tickets/concerts-on-the-square",
+    classification: "Music",
+    weekday: 3, // Wednesday (0=Sun..6=Sat)
+    startTime: [19, 0], // 7:00 PM; ~2h concert, so no endTime (the ~3h grace covers it)
+    // Verified 2026 season (wcoconcerts.org): six Wednesdays, Jun 24–Jul 29.
+    // Season boundaries drift year to year, so this pins the confirmed dates and
+    // wants a yearly bump; [year, month(0-idx), day].
+    seasonStart: [2026, 5, 24], // June 24, 2026
+    seasonEnd: [2026, 6, 29], // July 29, 2026
+  },
 ];
 
 const CORS = {
